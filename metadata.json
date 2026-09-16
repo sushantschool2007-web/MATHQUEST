@@ -1,0 +1,6 @@
+{
+  "name": "CET Math Quest",
+  "description": "Master MHT-CET Mathematics through gamified learning, chapter tests, formula books, and mock tests.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
