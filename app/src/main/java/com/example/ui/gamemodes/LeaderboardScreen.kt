@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,9 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.repository.FirestoreSyncRepository
 import com.example.data.repository.MathRepository
 import com.example.ui.components.QuestTopBar
 import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 data class LeaderboardEntry(
     val rank: Int,
@@ -34,33 +39,36 @@ data class LeaderboardEntry(
 @Composable
 fun LeaderboardScreen(
     repository: MathRepository,
+    firestoreSyncRepository: FirestoreSyncRepository? = null,
     onBack: () -> Unit
 ) {
     val prefs by repository.userPreferencesFlow.collectAsStateWithLifecycle(initialValue = null)
-    val userXp = prefs?.totalXp ?: 150
+    val userXp = prefs?.totalXp ?: 0
     val userName = prefs?.studentName ?: "You"
-    val userSolved = prefs?.totalSolved ?: 10
+    val userSolved = prefs?.totalSolved ?: 0
 
-    val aspirants = remember(userXp) {
-        val staticList = listOf(
-            LeaderboardEntry(1, "Tanvi Deshmukh", "Pune (COEP Aspirant)", 4850, 142),
-            LeaderboardEntry(2, "Rohan Kulkarni", "Mumbai (VJTI Aspirant)", 4120, 128),
-            LeaderboardEntry(3, "Pranav Shinde", "Nagpur (VNIT Aspirant)", 3650, 110),
-            LeaderboardEntry(4, "Aditi Joshi", "Nashik (PICT Aspirant)", 2980, 95),
-            LeaderboardEntry(5, "Atharva Patil", "Kolhapur (Walchand Aspirant)", 2410, 84),
-            LeaderboardEntry(6, "Neha Sawant", "Thane (SPIT Aspirant)", 1890, 68),
-            LeaderboardEntry(7, "Siddharth More", "Aurangabad (VIT Aspirant)", 1250, 48),
-            LeaderboardEntry(8, "Vaishnavi Pawar", "Solapur (PCCOE Aspirant)", 820, 34),
-            LeaderboardEntry(9, "Omkar Gaikwad", "Satara", 510, 22)
-        )
+    val scope = rememberCoroutineScope()
+    var aspirants by remember { mutableStateOf<List<LeaderboardEntry>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-        // Insert user dynamically based on XP
-        val combined = staticList.toMutableList()
-        val userEntry = LeaderboardEntry(0, "$userName (You)", "Maharashtra Aspirant", userXp, userSolved, isUser = true)
-        combined.add(userEntry)
-        combined.sortedByDescending { it.xp }.mapIndexed { idx, item ->
-            item.copy(rank = idx + 1)
+    val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+    val isEmailVerified = currentUser?.isEmailVerified == true && !currentUser.isAnonymous
+    val hasEmail = !currentUser?.email.isNullOrBlank()
+
+    fun refreshLeaderboard() {
+        scope.launch {
+            isLoading = true
+            if (firestoreSyncRepository != null) {
+                aspirants = firestoreSyncRepository.fetchLiveLeaderboard(userXp, userName, userSolved)
+            } else {
+                aspirants = emptyList()
+            }
+            isLoading = false
         }
+    }
+
+    LaunchedEffect(userXp, userName, userSolved) {
+        refreshLeaderboard()
     }
 
     Scaffold(
@@ -68,7 +76,19 @@ fun LeaderboardScreen(
         topBar = {
             QuestTopBar(
                 title = "🏆 CET Leaderboard",
-                onBack = onBack
+                onBack = onBack,
+                customActions = {
+                    IconButton(
+                        onClick = { refreshLeaderboard() },
+                        modifier = Modifier.testTag("refresh_leaderboard_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Leaderboard",
+                            tint = QuestAccentGold
+                        )
+                    }
+                }
             )
         }
     ) { innerPadding ->
@@ -91,16 +111,21 @@ fun LeaderboardScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("⚡", fontSize = 24.sp)
+                    Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = "Cloud Synced",
+                        tint = QuestCyanAccent,
+                        modifier = Modifier.size(28.dp)
+                    )
                     Spacer(Modifier.width(10.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Simulated Maharashtra CET Rank",
+                            "Live Verified CET Rankings",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = QuestTextPrimary
                         )
                         Text(
-                            "Ranks update in real-time as you solve questions, finish mock tests, and earn XP.",
+                            "Strictly authentic: Only students registered with a verified email address appear here.",
                             style = MaterialTheme.typography.bodySmall,
                             color = QuestTextSecondary
                         )
@@ -108,17 +133,76 @@ fun LeaderboardScreen(
                 }
             }
 
+            if (!isEmailVerified) {
+                Spacer(Modifier.height(10.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = QuestWarningOrange.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, QuestWarningOrange.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🔒", fontSize = 20.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (!hasEmail) "You are browsing as Guest. Log in with a real email to compete on the live leaderboard!"
+                            else "Verify your registered email address to appear on the official Maharashtra CET Leaderboard.",
+                            style = MaterialTheme.typography.bodySmall.copy(color = QuestWarningOrange, fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(14.dp))
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(aspirants, key = { it.name }) { entry ->
-                    LeaderboardCard(entry = entry)
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = QuestAccentGold)
                 }
-                item {
-                    Spacer(Modifier.height(24.dp))
+            } else if (aspirants.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 40.dp, bottom = 20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🎖️", fontSize = 48.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Be the First on the Board!",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = QuestTextPrimary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Log in with a verified email, earn XP by solving CET math problems, and take the #1 spot!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = QuestTextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(aspirants, key = { "${it.name}_${it.rank}" }) { entry ->
+                        LeaderboardCard(entry = entry)
+                    }
+                    item {
+                        Spacer(Modifier.height(24.dp))
+                    }
                 }
             }
         }

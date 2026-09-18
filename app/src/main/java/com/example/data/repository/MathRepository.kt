@@ -5,13 +5,18 @@ import com.example.data.local.DataStoreManager
 import com.example.data.local.UserPreferences
 import com.example.data.local.entity.*
 import com.example.data.model.SyllabusConstants
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
 class MathRepository(
     private val database: AppDatabase,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    private val firestoreSyncRepository: FirestoreSyncRepository? = null
 ) {
     private val questionDao = database.questionDao()
     private val chapterDao = database.chapterDao()
@@ -21,9 +26,11 @@ class MathRepository(
     private val mockTestDao = database.mockTestDao()
     private val dailyChallengeDao = database.dailyChallengeDao()
     private val userProfileDao = database.userProfileDao()
+    private val studentDao = database.studentDao()
 
     val userPreferencesFlow: Flow<UserPreferences> = dataStoreManager.userPreferencesFlow
     val latestUserProfile: Flow<UserProfileEntity?> = userProfileDao.getLatestUserProfile()
+    val allStudents: Flow<List<StudentEntity>> = studentDao.getAllStudents()
     val allChapterProgress: Flow<List<ChapterProgressEntity>> = chapterDao.getAllChapterProgress()
     val allMistakes: Flow<List<MistakeEntity>> = mistakeDao.getAllMistakes()
     val unresolvedMistakes: Flow<List<MistakeEntity>> = mistakeDao.getUnresolvedMistakes()
@@ -138,6 +145,18 @@ class MathRepository(
 
         // 4. Check for first blood / streak achievements
         achievementDao.unlockAchievement("FIRST_BLOOD", System.currentTimeMillis())
+
+        // 5. Cloud Firestore background sync
+        triggerCloudSync()
+    }
+
+    fun triggerCloudSync() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val prefs = dataStoreManager.userPreferencesFlow.firstOrNull() ?: return@launch
+                firestoreSyncRepository?.syncProgressToCloud(prefs)
+            } catch (_: Exception) {}
+        }
     }
 
     suspend fun resolveMistake(mistakeId: Long) {
@@ -159,6 +178,7 @@ class MathRepository(
         if (result.score >= 80) {
             achievementDao.unlockAchievement("CHAPTER_MASTER", System.currentTimeMillis())
         }
+        triggerCloudSync()
         return id
     }
 
@@ -178,6 +198,7 @@ class MathRepository(
             )
         )
         dataStoreManager.addXp(xpEarned)
+        triggerCloudSync()
     }
 
     suspend fun saveOnboarding(
@@ -191,6 +212,7 @@ class MathRepository(
         dataStoreManager.saveOnboarding(
             studentName, targetYear, prepLevel, dailyGoalMinutes, targetScore, recommendedChapter
         )
+        triggerCloudSync()
     }
 
     suspend fun updateHearts(hearts: Int) {
@@ -199,6 +221,16 @@ class MathRepository(
 
     suspend fun setActiveChapter(chapter: String) {
         dataStoreManager.setActiveChapter(chapter)
+    }
+
+    suspend fun hasUserProfile(uid: String): Boolean {
+        return userProfileDao.findByUid(uid) != null
+    }
+
+    suspend fun initializeNewUserProgress() {
+        dataStoreManager.resetUserProgress()
+        chapterDao.resetAllChapterProgress()
+        achievementDao.resetAllAchievements()
     }
 
     suspend fun saveUserProfile(
@@ -236,5 +268,261 @@ class MathRepository(
     fun getUserProfile(uid: String): Flow<UserProfileEntity?> {
         return userProfileDao.getUserProfile(uid)
     }
+
+    // Admin Content Management Methods
+    suspend fun addQuestion(question: QuestionEntity): Long {
+        return questionDao.insertQuestion(question)
+    }
+
+    suspend fun deleteQuestion(id: Long) {
+        questionDao.deleteQuestionById(id)
+    }
+
+    fun getRecentQuestions(limit: Int = 50): Flow<List<QuestionEntity>> {
+        return questionDao.getRecentQuestions(limit)
+    }
+
+    suspend fun addFormula(formula: FormulaEntity): Long {
+        return formulaDao.insertFormula(formula)
+    }
+
+    suspend fun deleteFormula(id: Long) {
+        formulaDao.deleteFormulaById(id)
+    }
+
+    fun getRecentFormulas(limit: Int = 50): Flow<List<FormulaEntity>> {
+        return formulaDao.getRecentFormulas(limit)
+    }
+
+    suspend fun getQuestionCount(): Int {
+        return questionDao.getQuestionCount()
+    }
+
+    suspend fun getFormulaCount(): Int {
+        return formulaDao.getFormulaCount()
+    }
+
+    // Admin Student Records & Management Methods
+    suspend fun getStudentById(id: String): StudentEntity? {
+        return studentDao.getStudentById(id)
+    }
+
+    suspend fun insertStudent(student: StudentEntity) {
+        studentDao.insertStudent(student)
+    }
+
+    suspend fun updateStudent(student: StudentEntity) {
+        studentDao.updateStudent(student)
+    }
+
+    suspend fun deleteStudent(id: String) {
+        studentDao.deleteStudent(id)
+    }
+
+    suspend fun seedInitialStudentsIfEmpty() {
+        val count = studentDao.getStudentCount()
+        if (count > 0) return
+
+        val sampleCohort = listOf(
+            StudentEntity(
+                studentId = "std_001",
+                name = "Aarav Deshmukh",
+                email = "aarav.deshmukh@gmail.com",
+                standard = 12,
+                targetExam = "MHT-CET 2026",
+                enrollmentDate = System.currentTimeMillis() - 45L * 86400000L,
+                lastActiveTimestamp = System.currentTimeMillis() - 15 * 60000L,
+                xp = 4250,
+                levelNumber = 6,
+                levelTitle = "Differential Dynamo",
+                streakDays = 12,
+                totalSolved = 180,
+                totalCorrect = 162,
+                accuracy = 90.0f,
+                studyTimeMinutes = 480,
+                mockTestsTaken = 5,
+                mockTestBestScore = 94,
+                mockTestAvgScore = 88,
+                chaptersMastered = 8,
+                totalMistakes = 18,
+                weakTopics = "Definite Integrals (Substitution)",
+                strongTopics = "Vectors, 3D Geometry, Matrices, Logic",
+                notes = "Consistent top performer. Strong speed in Paper 1 syllabus."
+            ),
+            StudentEntity(
+                studentId = "std_002",
+                name = "Sanika Kulkarni",
+                email = "sanika.kulkarni@gmail.com",
+                standard = 12,
+                targetExam = "MHT-CET 2026",
+                enrollmentDate = System.currentTimeMillis() - 30L * 86400000L,
+                lastActiveTimestamp = System.currentTimeMillis() - 2 * 3600000L,
+                xp = 3450,
+                levelNumber = 5,
+                levelTitle = "Vector Vanguard",
+                streakDays = 8,
+                totalSolved = 135,
+                totalCorrect = 118,
+                accuracy = 87.4f,
+                studyTimeMinutes = 360,
+                mockTestsTaken = 4,
+                mockTestBestScore = 88,
+                mockTestAvgScore = 82,
+                chaptersMastered = 6,
+                totalMistakes = 17,
+                weakTopics = "Probability Distribution",
+                strongTopics = "Trigonometric Functions, Pair of Straight Lines",
+                notes = "Excellent formula retention. Focus on time pressure."
+            ),
+            StudentEntity(
+                studentId = "std_003",
+                name = "Rohan Patil",
+                email = "rohan.patil@outlook.com",
+                standard = 11,
+                targetExam = "MHT-CET 2027",
+                enrollmentDate = System.currentTimeMillis() - 20L * 86400000L,
+                lastActiveTimestamp = System.currentTimeMillis() - 5 * 3600000L,
+                xp = 2100,
+                levelNumber = 4,
+                levelTitle = "Concept Knight",
+                streakDays = 5,
+                totalSolved = 90,
+                totalCorrect = 70,
+                accuracy = 77.8f,
+                studyTimeMinutes = 240,
+                mockTestsTaken = 2,
+                mockTestBestScore = 76,
+                mockTestAvgScore = 72,
+                chaptersMastered = 4,
+                totalMistakes = 20,
+                weakTopics = "Conics (Parabola focal properties)",
+                strongTopics = "Straight Line, Trigonometry II",
+                notes = "Good foundation in Class 11. Encouraged to take more mocks."
+            ),
+            StudentEntity(
+                studentId = "std_004",
+                name = "Ananya Joshi",
+                email = "ananya.joshi@gmail.com",
+                standard = 12,
+                targetExam = "MHT-CET 2026",
+                enrollmentDate = System.currentTimeMillis() - 60L * 86400000L,
+                lastActiveTimestamp = System.currentTimeMillis() - 40 * 60000L,
+                xp = 5120,
+                levelNumber = 7,
+                levelTitle = "Centum Scholar",
+                streakDays = 21,
+                totalSolved = 240,
+                totalCorrect = 228,
+                accuracy = 95.0f,
+                studyTimeMinutes = 620,
+                mockTestsTaken = 7,
+                mockTestBestScore = 98,
+                mockTestAvgScore = 93,
+                chaptersMastered = 12,
+                totalMistakes = 12,
+                weakTopics = "Plane & Sphere intersection",
+                strongTopics = "Differentiation, Applications of Derivatives, Matrices",
+                notes = "Potential 99.9+ percentile candidate. Very fast calculations."
+            ),
+            StudentEntity(
+                studentId = "std_005",
+                name = "Aditya Shinde",
+                email = "aditya.shinde@yahoo.com",
+                standard = 11,
+                targetExam = "MHT-CET 2027",
+                enrollmentDate = System.currentTimeMillis() - 15L * 86400000L,
+                lastActiveTimestamp = System.currentTimeMillis() - 24 * 3600000L,
+                xp = 1580,
+                levelNumber = 3,
+                levelTitle = "Formula Apprentice",
+                streakDays = 2,
+                totalSolved = 65,
+                totalCorrect = 47,
+                accuracy = 72.3f,
+                studyTimeMinutes = 160,
+                mockTestsTaken = 1,
+                mockTestBestScore = 68,
+                mockTestAvgScore = 68,
+                chaptersMastered = 2,
+                totalMistakes = 18,
+                weakTopics = "Limits & Continuity",
+                strongTopics = "Sets & Relations, Functions",
+                notes = "Needs extra practice on L'Hopital's rule and standard expansions."
+            ),
+            StudentEntity(
+                studentId = "std_006",
+                name = "Tanvi More",
+                email = "tanvi.more@gmail.com",
+                standard = 12,
+                targetExam = "MHT-CET 2026",
+                enrollmentDate = System.currentTimeMillis() - 25L * 86400000L,
+                lastActiveTimestamp = System.currentTimeMillis() - 3 * 3600000L,
+                xp = 2850,
+                levelNumber = 4,
+                levelTitle = "Concept Knight",
+                streakDays = 6,
+                totalSolved = 110,
+                totalCorrect = 92,
+                accuracy = 83.6f,
+                studyTimeMinutes = 290,
+                mockTestsTaken = 3,
+                mockTestBestScore = 84,
+                mockTestAvgScore = 79,
+                chaptersMastered = 5,
+                totalMistakes = 18,
+                weakTopics = "Differential Equations (Linear Form)",
+                strongTopics = "Linear Programming, Binomial Distribution",
+                notes = "Steady progress. Recommended to revise integrating factor."
+            )
+        )
+        studentDao.insertStudents(sampleCohort)
+    }
+
+    suspend fun syncCurrentStudentProgress(prefs: UserPreferences) {
+        val uid = prefs.userId.ifBlank { "current_active_student" }
+        val name = prefs.studentName.ifBlank { "Current Learner" }
+        val email = prefs.userEmail.ifBlank { "student.active@cetquest.edu" }
+        val totalSolved = prefs.totalSolved
+        val totalCorrect = prefs.totalCorrect
+        val accuracy = if (totalSolved > 0) (totalCorrect.toFloat() / totalSolved.toFloat()) * 100f else 0f
+
+        val existing = studentDao.getStudentById(uid)
+        val student = StudentEntity(
+            studentId = uid,
+            name = name,
+            email = email,
+            standard = 12,
+            targetExam = "MHT-CET ${prefs.targetYear.ifBlank { "2026" }}",
+            enrollmentDate = existing?.enrollmentDate ?: System.currentTimeMillis(),
+            lastActiveTimestamp = System.currentTimeMillis(),
+            xp = prefs.totalXp,
+            levelNumber = prefs.currentLevel,
+            levelTitle = when (prefs.currentLevel) {
+                1 -> "Freshman Aspirant"
+                2 -> "Arithmetic Novice"
+                3 -> "Formula Apprentice"
+                4 -> "Concept Knight"
+                5 -> "Vector Vanguard"
+                6 -> "Differential Dynamo"
+                7 -> "Centum Scholar"
+                else -> "MHT-CET Master"
+            },
+            streakDays = prefs.streakDays,
+            totalSolved = totalSolved,
+            totalCorrect = totalCorrect,
+            accuracy = accuracy,
+            studyTimeMinutes = prefs.studyTimeMinutes,
+            mockTestsTaken = existing?.mockTestsTaken ?: 1,
+            mockTestBestScore = existing?.mockTestBestScore ?: 80,
+            mockTestAvgScore = existing?.mockTestAvgScore ?: 75,
+            chaptersMastered = existing?.chaptersMastered ?: 3,
+            totalMistakes = existing?.totalMistakes ?: 5,
+            weakTopics = existing?.weakTopics ?: "Calculus, 3D Geometry",
+            strongTopics = existing?.strongTopics ?: "Trigonometry, Matrices",
+            notes = existing?.notes ?: "Active registered student."
+        )
+        studentDao.insertStudent(student)
+    }
 }
+
 

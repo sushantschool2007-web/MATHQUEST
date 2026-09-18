@@ -65,6 +65,19 @@ fun QuestTopBar(
                 modifier = Modifier.padding(end = 12.dp)
             ) {
                 customActions?.invoke(this)
+
+                // Adaptive Theme Toggle Switch (Sun/Moon icon)
+                IconButton(
+                    onClick = { ThemeController.toggleTheme() },
+                    modifier = Modifier.testTag("theme_toggle_button")
+                ) {
+                    Icon(
+                        imageVector = if (ThemeController.isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                        contentDescription = if (ThemeController.isDarkTheme) "Switch to Light Mode" else "Switch to Dark Mode",
+                        tint = if (ThemeController.isDarkTheme) Color(0xFFFBBF24) else Color(0xFF4F46E5)
+                    )
+                }
+
                 if (hearts != null) {
                     Surface(
                         color = QuestErrorRed.copy(alpha = 0.15f),
@@ -193,25 +206,35 @@ fun OptionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = ThemeController.isDarkTheme
+
+    // Light Mode: Border outline with subtle blue tint on selection
+    // Dark Mode: Glowing border with dark indigo background fill on selection
     val backgroundColor = when {
-        isAnswerRevealed && isCorrectOption -> QuestSuccessGreen.copy(alpha = 0.2f)
-        isAnswerRevealed && isSelected && !isCorrectOption -> QuestErrorRed.copy(alpha = 0.2f)
-        isSelected -> QuestPrimaryBlue.copy(alpha = 0.25f)
-        else -> QuestNavyCard
+        isAnswerRevealed && isCorrectOption -> (if (isDark) DarkSpectrumSuccess else LightSpectrumSuccess).copy(alpha = 0.2f)
+        isAnswerRevealed && isSelected && !isCorrectOption -> (if (isDark) DarkSpectrumError else LightSpectrumError).copy(alpha = 0.2f)
+        isSelected -> {
+            if (isDark) DarkSpectrumActionElectric.copy(alpha = 0.28f)
+            else Color(0xFFEFF6FF) // subtle blue tint in Light Mode
+        }
+        else -> if (isDark) DarkSpectrumCard else LightSpectrumCard
     }
 
     val borderColor = when {
-        isAnswerRevealed && isCorrectOption -> QuestSuccessGreen
-        isAnswerRevealed && isSelected && !isCorrectOption -> QuestErrorRed
-        isSelected -> QuestPrimaryBlue
-        else -> QuestNavyBorder
+        isAnswerRevealed && isCorrectOption -> if (isDark) DarkSpectrumSuccess else LightSpectrumSuccess
+        isAnswerRevealed && isSelected && !isCorrectOption -> if (isDark) DarkSpectrumError else LightSpectrumError
+        isSelected -> {
+            if (isDark) DarkSpectrumActionElectric // glowing border in Dark Mode
+            else LightSpectrumActionPrimary // border outline in Light Mode
+        }
+        else -> if (isDark) DarkSpectrumBorder else LightSpectrumBorder
     }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
+            .border(if (isSelected) 2.dp else 1.dp, borderColor, RoundedCornerShape(14.dp))
             .clickable(enabled = !isAnswerRevealed, onClick = onClick)
             .testTag("option_$optionLetter"),
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
@@ -227,14 +250,16 @@ fun OptionCard(
                     .size(34.dp)
                     .clip(CircleShape)
                     .background(
-                        if (isSelected || (isAnswerRevealed && isCorrectOption)) borderColor else QuestNavySurface
+                        if (isSelected || (isAnswerRevealed && isCorrectOption)) borderColor
+                        else (if (isDark) DarkSpectrumSurface else LightSpectrumSurface)
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = optionLetter,
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = if (isSelected || (isAnswerRevealed && isCorrectOption)) Color.White else QuestTextSecondary
+                    color = if (isSelected || (isAnswerRevealed && isCorrectOption)) Color.White
+                    else (if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary)
                 )
             }
 
@@ -247,7 +272,7 @@ fun OptionCard(
                     lineHeight = 22.sp,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                 ),
-                color = QuestTextPrimary,
+                color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary,
                 modifier = Modifier.weight(1f)
             )
 

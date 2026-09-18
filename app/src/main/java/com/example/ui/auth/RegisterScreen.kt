@@ -340,7 +340,7 @@ fun RegisterScreen(
                             keyboardActions = KeyboardActions(
                                 onDone = {
                                     focusManager.clearFocus()
-                                    viewModel.register(onRegisterSuccess)
+                                    viewModel.register(onSuccess = { onRegisterSuccess() })
                                 }
                             ),
                             singleLine = true,
@@ -381,7 +381,7 @@ fun RegisterScreen(
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                viewModel.register(onRegisterSuccess)
+                                viewModel.register(onSuccess = { onRegisterSuccess() })
                             },
                             enabled = uiState.authState !is AuthState.Loading,
                             colors = ButtonDefaults.buttonColors(

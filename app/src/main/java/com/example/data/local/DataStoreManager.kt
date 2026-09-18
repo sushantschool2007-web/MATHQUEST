@@ -65,14 +65,14 @@ class DataStoreManager(private val context: Context) {
             prepLevel = preferences[PreferencesKeys.PREP_LEVEL] ?: "Developing",
             dailyGoalMinutes = preferences[PreferencesKeys.DAILY_GOAL_MINUTES] ?: 30,
             targetScore = preferences[PreferencesKeys.TARGET_SCORE] ?: 90,
-            totalXp = preferences[PreferencesKeys.TOTAL_XP] ?: 50,
+            totalXp = preferences[PreferencesKeys.TOTAL_XP] ?: 0,
             currentLevel = preferences[PreferencesKeys.CURRENT_LEVEL] ?: 1,
-            streakDays = preferences[PreferencesKeys.STREAK_DAYS] ?: 1,
+            streakDays = preferences[PreferencesKeys.STREAK_DAYS] ?: 0,
             lastActiveDate = preferences[PreferencesKeys.LAST_ACTIVE_DATE] ?: "",
             hearts = preferences[PreferencesKeys.HEARTS] ?: 5,
             totalSolved = preferences[PreferencesKeys.TOTAL_SOLVED] ?: 0,
             totalCorrect = preferences[PreferencesKeys.TOTAL_CORRECT] ?: 0,
-            studyTimeMinutes = preferences[PreferencesKeys.STUDY_TIME_MINUTES] ?: 15,
+            studyTimeMinutes = preferences[PreferencesKeys.STUDY_TIME_MINUTES] ?: 0,
             activeChapter = preferences[PreferencesKeys.ACTIVE_CHAPTER] ?: "Trigonometry II",
             avatarId = preferences[PreferencesKeys.AVATAR_ID] ?: 0,
             isLoggedIn = preferences[PreferencesKeys.IS_LOGGED_IN] ?: false,
@@ -106,7 +106,7 @@ class DataStoreManager(private val context: Context) {
 
     suspend fun addXp(amount: Int) {
         context.dataStore.edit { preferences ->
-            val currentXp = (preferences[PreferencesKeys.TOTAL_XP] ?: 50) + amount
+            val currentXp = (preferences[PreferencesKeys.TOTAL_XP] ?: 0) + amount
             preferences[PreferencesKeys.TOTAL_XP] = currentXp
 
             // Calculate level
@@ -193,6 +193,37 @@ class DataStoreManager(private val context: Context) {
             if (email.isNotBlank()) {
                 preferences[PreferencesKeys.USER_EMAIL] = email
             }
+        }
+    }
+
+    suspend fun mergeCloudProgress(
+        cloudXp: Int,
+        cloudLevel: Int,
+        cloudSolved: Int,
+        cloudCorrect: Int,
+        cloudStreak: Int
+    ) {
+        context.dataStore.edit { preferences ->
+            val currentXp = preferences[PreferencesKeys.TOTAL_XP] ?: 0
+            if (cloudXp > currentXp) {
+                preferences[PreferencesKeys.TOTAL_XP] = cloudXp
+                preferences[PreferencesKeys.CURRENT_LEVEL] = maxOf(preferences[PreferencesKeys.CURRENT_LEVEL] ?: 1, cloudLevel)
+                preferences[PreferencesKeys.TOTAL_SOLVED] = maxOf(preferences[PreferencesKeys.TOTAL_SOLVED] ?: 0, cloudSolved)
+                preferences[PreferencesKeys.TOTAL_CORRECT] = maxOf(preferences[PreferencesKeys.TOTAL_CORRECT] ?: 0, cloudCorrect)
+                preferences[PreferencesKeys.STREAK_DAYS] = maxOf(preferences[PreferencesKeys.STREAK_DAYS] ?: 0, cloudStreak)
+            }
+        }
+    }
+
+    suspend fun resetUserProgress() {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.TOTAL_XP] = 0
+            preferences[PreferencesKeys.CURRENT_LEVEL] = 1
+            preferences[PreferencesKeys.TOTAL_SOLVED] = 0
+            preferences[PreferencesKeys.TOTAL_CORRECT] = 0
+            preferences[PreferencesKeys.STUDY_TIME_MINUTES] = 0
+            preferences[PreferencesKeys.STREAK_DAYS] = 0
+            preferences[PreferencesKeys.HEARTS] = 5
         }
     }
 }

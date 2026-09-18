@@ -35,6 +35,15 @@ interface QuestionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQuestions(questions: List<QuestionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuestion(question: QuestionEntity): Long
+
+    @Query("DELETE FROM questions WHERE id = :id")
+    suspend fun deleteQuestionById(id: Long)
+
+    @Query("SELECT * FROM questions ORDER BY id DESC LIMIT :limit")
+    fun getRecentQuestions(limit: Int = 50): Flow<List<QuestionEntity>>
 }
 
 @Dao
@@ -56,6 +65,9 @@ interface ChapterDao {
 
     @Query("UPDATE chapter_progress SET questionsSolved = questionsSolved + 1, questionsCorrect = questionsCorrect + :isCorrect, mastery = :mastery, accuracy = :accuracy, lastStudiedTimestamp = :timestamp WHERE chapterName = :chapterName")
     suspend fun recordAttempt(chapterName: String, isCorrect: Int, mastery: Int, accuracy: Float, timestamp: Long)
+
+    @Query("UPDATE chapter_progress SET questionsSolved = 0, questionsCorrect = 0, mastery = 0, accuracy = 0.0, unlockedDifficulty = 1, bestScore = 0, lastStudiedTimestamp = 0")
+    suspend fun resetAllChapterProgress()
 }
 
 @Dao
@@ -102,6 +114,15 @@ interface FormulaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFormulas(formulas: List<FormulaEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFormula(formula: FormulaEntity): Long
+
+    @Query("DELETE FROM formulas WHERE id = :id")
+    suspend fun deleteFormulaById(id: Long)
+
+    @Query("SELECT * FROM formulas ORDER BY id DESC LIMIT :limit")
+    fun getRecentFormulas(limit: Int = 50): Flow<List<FormulaEntity>>
+
     @Query("SELECT COUNT(*) FROM formulas")
     suspend fun getFormulaCount(): Int
 }
@@ -113,6 +134,9 @@ interface AchievementDao {
 
     @Query("UPDATE achievements SET isUnlocked = 1, unlockedTimestamp = :timestamp WHERE id = :id AND isUnlocked = 0")
     suspend fun unlockAchievement(id: String, timestamp: Long)
+
+    @Query("UPDATE achievements SET isUnlocked = 0, unlockedTimestamp = 0")
+    suspend fun resetAllAchievements()
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAchievements(list: List<AchievementEntity>)
@@ -147,6 +171,9 @@ interface UserProfileDao {
     @Query("SELECT * FROM user_profiles WHERE uid = :uid LIMIT 1")
     fun getUserProfile(uid: String): Flow<UserProfileEntity?>
 
+    @Query("SELECT * FROM user_profiles WHERE uid = :uid LIMIT 1")
+    suspend fun findByUid(uid: String): UserProfileEntity?
+
     @Query("SELECT * FROM user_profiles WHERE LOWER(email) = LOWER(:email) LIMIT 1")
     suspend fun findByEmail(email: String): UserProfileEntity?
 
@@ -165,4 +192,32 @@ interface UserProfileDao {
     @Query("DELETE FROM user_profiles")
     suspend fun clearAllProfiles()
 }
+
+@Dao
+interface StudentDao {
+    @Query("SELECT * FROM students ORDER BY xp DESC")
+    fun getAllStudents(): Flow<List<StudentEntity>>
+
+    @Query("SELECT * FROM students WHERE studentId = :id LIMIT 1")
+    suspend fun getStudentById(id: String): StudentEntity?
+
+    @Query("SELECT * FROM students WHERE standard = :std ORDER BY xp DESC")
+    fun getStudentsByStandard(std: Int): Flow<List<StudentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStudent(student: StudentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStudents(students: List<StudentEntity>)
+
+    @Update
+    suspend fun updateStudent(student: StudentEntity)
+
+    @Query("DELETE FROM students WHERE studentId = :id")
+    suspend fun deleteStudent(id: String)
+
+    @Query("SELECT COUNT(*) FROM students")
+    suspend fun getStudentCount(): Int
+}
+
 

@@ -20,7 +20,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.data.repository.AuthRepository
+import com.example.ui.admin.AdminDashboardScreen
+import com.example.ui.admin.AdminDashboardViewModel
 import com.example.ui.auth.AuthViewModel
+import com.example.ui.auth.EmailVerificationScreen
 import com.example.ui.auth.LoginScreen
 import com.example.ui.auth.RegisterScreen
 import com.example.ui.chapter.ChapterLearningScreen
@@ -52,12 +55,14 @@ class MainActivity : ComponentActivity() {
         val app = application as CetMathQuestApp
         val repository = app.repository
         val authRepository = app.authRepository
+        val firestoreSyncRepository = app.firestoreSyncRepository
 
         setContent {
             MyApplicationTheme {
                 QuestAppNav(
                     repository = repository,
-                    authRepository = authRepository
+                    authRepository = authRepository,
+                    firestoreSyncRepository = firestoreSyncRepository
                 )
             }
         }
@@ -67,7 +72,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun QuestAppNav(
     repository: com.example.data.repository.MathRepository,
-    authRepository: AuthRepository
+    authRepository: AuthRepository,
+    firestoreSyncRepository: com.example.data.repository.FirestoreSyncRepository? = null
 ) {
     val prefs by repository.userPreferencesFlow.collectAsStateWithLifecycle(initialValue = null)
     val navController = rememberNavController()
@@ -85,8 +91,10 @@ fun QuestAppNav(
     }
 
     val isUserLoggedIn = authRepository.isUserLoggedIn() || (prefs?.isLoggedIn == true)
+    val isEmailVerified = authRepository.isEmailVerified()
     val startDestination = when {
         !isUserLoggedIn -> Screen.Login.route
+        !isEmailVerified -> Screen.EmailVerification.route
         prefs?.isOnboarded == true -> Screen.Home.route
         else -> Screen.Onboarding.route
     }
@@ -103,8 +111,12 @@ fun QuestAppNav(
                 onNavigateToRegister = {
                     navController.navigate(Screen.Register.route)
                 },
-                onLoginSuccess = {
-                    val nextRoute = if (prefs?.isOnboarded == true) Screen.Home.route else Screen.Onboarding.route
+                onLoginSuccess = { isVerified ->
+                    val nextRoute = when {
+                        !isVerified -> Screen.EmailVerification.route
+                        prefs?.isOnboarded == true -> Screen.Home.route
+                        else -> Screen.Onboarding.route
+                    }
                     navController.navigate(nextRoute) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -120,9 +132,26 @@ fun QuestAppNav(
                     navController.popBackStack()
                 },
                 onRegisterSuccess = {
+                    navController.navigate(Screen.EmailVerification.route) {
+                        popUpTo(Screen.Register.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Screen.EmailVerification.route) {
+            val authViewModel = viewModel { AuthViewModel(authRepository) }
+            EmailVerificationScreen(
+                viewModel = authViewModel,
+                onVerificationSuccess = {
                     val nextRoute = if (prefs?.isOnboarded == true) Screen.Home.route else Screen.Onboarding.route
                     navController.navigate(nextRoute) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
+                        popUpTo(Screen.EmailVerification.route) { inclusive = true }
+                    }
+                },
+                onSignOut = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )
@@ -179,6 +208,9 @@ fun QuestAppNav(
                 },
                 onProfile = {
                     navController.navigate(Screen.Profile.route)
+                },
+                onAdminDashboard = {
+                    navController.navigate(Screen.AdminDashboard.route)
                 }
             )
         }
@@ -189,17 +221,33 @@ fun QuestAppNav(
                 viewModel = chapterListViewModel,
                 onBack = { navController.popBackStack() },
                 onChapterSelect = { chapter ->
-                    navController.navigate(Screen.ChapterLearning.createRoute(chapter))
+                    navController.navigate(Screen.ChapterLearning.createRoute(chapter, 0))
+                },
+                onJumpToConcepts = { chapter ->
+                    navController.navigate(Screen.ChapterLearning.createRoute(chapter, 0))
+                },
+                onJumpToFormulas = { chapter ->
+                    navController.navigate(Screen.ChapterLearning.createRoute(chapter, 1))
+                },
+                onJumpToPractice = { chapter ->
+                    navController.navigate(Screen.ChapterLearning.createRoute(chapter, 3))
                 }
             )
         }
 
         composable(
             route = Screen.ChapterLearning.route,
-            arguments = listOf(navArgument("chapterName") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("chapterName") { type = NavType.StringType },
+                navArgument("tab") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                }
+            )
         ) { backStackEntry ->
             val chapterName = backStackEntry.arguments?.getString("chapterName") ?: "Trigonometry II"
-            val chapterViewModel = viewModel { ChapterLearningViewModel(repository, chapterName) }
+            val tab = backStackEntry.arguments?.getInt("tab") ?: 0
+            val chapterViewModel = viewModel { ChapterLearningViewModel(repository, chapterName, tab) }
             ChapterLearningScreen(
                 viewModel = chapterViewModel,
                 onBack = { navController.popBackStack() }
@@ -314,6 +362,7 @@ fun QuestAppNav(
         composable(Screen.Leaderboard.route) {
             LeaderboardScreen(
                 repository = repository,
+                firestoreSyncRepository = firestoreSyncRepository,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -329,12 +378,28 @@ fun QuestAppNav(
             val authViewModel = viewModel { AuthViewModel(authRepository) }
             ProfileScreen(
                 repository = repository,
+                firestoreSyncRepository = firestoreSyncRepository,
                 onBack = { navController.popBackStack() },
                 onLogout = {
                     authViewModel.signOut {
                         navController.navigate(Screen.Login.route) {
                             popUpTo(0) { inclusive = true }
                         }
+                    }
+                },
+                onAdminDashboard = {
+                    navController.navigate(Screen.AdminDashboard.route)
+                }
+            )
+        }
+
+        composable(Screen.AdminDashboard.route) {
+            val adminViewModel = viewModel { AdminDashboardViewModel(repository) }
+            AdminDashboardScreen(
+                viewModel = adminViewModel,
+                onSwitchToStudentView = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
                     }
                 }
             )

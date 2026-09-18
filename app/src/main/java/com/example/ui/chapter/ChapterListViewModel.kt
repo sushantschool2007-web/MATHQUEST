@@ -3,47 +3,77 @@ package com.example.ui.chapter
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.entity.ChapterProgressEntity
-import com.example.data.model.ChapterMetadata
-import com.example.data.model.SyllabusConstants
+import com.example.data.model.ComprehensiveChapter
+import com.example.data.model.MathematicsRepositoryCatalog
+import com.example.data.model.ValidationReport
 import com.example.data.repository.MathRepository
 import kotlinx.coroutines.flow.*
 
-data class ChapterUiModel(
-    val meta: ChapterMetadata,
+data class ComprehensiveChapterUiModel(
+    val chapter: ComprehensiveChapter,
     val progress: ChapterProgressEntity?
 )
 
+enum class SyllabusViewMode(val title: String) {
+    STD_11_PART_1("Std 11 Part 1"),
+    STD_11_PART_2("Std 11 Part 2"),
+    STD_12_PART_1("Std 12 Part 1"),
+    STD_12_PART_2("Std 12 Part 2"),
+    MHT_CET("MHT-CET"),
+    JEE_MAIN("JEE Main")
+}
+
 data class ChapterListUiState(
-    val selectedClassTab: Int = 12, // 11 or 12
-    val chaptersXi: List<ChapterUiModel> = emptyList(),
-    val chaptersXii: List<ChapterUiModel> = emptyList(),
-    val searchQuery: String = ""
+    val selectedMode: SyllabusViewMode = SyllabusViewMode.STD_12_PART_1,
+    val chapters: List<ComprehensiveChapterUiModel> = emptyList(),
+    val searchQuery: String = "",
+    val validationReport: ValidationReport = MathematicsRepositoryCatalog.validateSyllabusHierarchy(),
+    val showValidationDialog: Boolean = false
 )
 
 class ChapterListViewModel(private val repository: MathRepository) : ViewModel() {
-    private val _selectedTab = MutableStateFlow(12)
+    private val _selectedMode = MutableStateFlow(SyllabusViewMode.STD_12_PART_1)
     private val _searchQuery = MutableStateFlow("")
+    private val _showValidation = MutableStateFlow(false)
 
     val uiState: StateFlow<ChapterListUiState> = combine(
-        _selectedTab,
+        _selectedMode,
         _searchQuery,
+        _showValidation,
         repository.allChapterProgress
-    ) { tab, query, progressList ->
-        val progressMap = progressList.associateBy { it.chapterName }
+    ) { mode, query, showVal, progressList ->
+        val progressMap = progressList.associateBy { it.chapterName.lowercase() }
 
-        val xi = SyllabusConstants.STD_XI_CHAPTERS
-            .filter { it.name.contains(query, ignoreCase = true) }
-            .map { meta -> ChapterUiModel(meta, progressMap[meta.name]) }
+        val rawChapters = when (mode) {
+            SyllabusViewMode.STD_11_PART_1 -> MathematicsRepositoryCatalog.getChaptersByStandardAndPart(11, 1)
+            SyllabusViewMode.STD_11_PART_2 -> MathematicsRepositoryCatalog.getChaptersByStandardAndPart(11, 2)
+            SyllabusViewMode.STD_12_PART_1 -> MathematicsRepositoryCatalog.getChaptersByStandardAndPart(12, 1)
+            SyllabusViewMode.STD_12_PART_2 -> MathematicsRepositoryCatalog.getChaptersByStandardAndPart(12, 2)
+            SyllabusViewMode.MHT_CET -> MathematicsRepositoryCatalog.getMhtCetChapters()
+            SyllabusViewMode.JEE_MAIN -> MathematicsRepositoryCatalog.getJeeMainChapters()
+        }
 
-        val xii = SyllabusConstants.STD_XII_CHAPTERS
-            .filter { it.name.contains(query, ignoreCase = true) }
-            .map { meta -> ChapterUiModel(meta, progressMap[meta.name]) }
+        val filtered = if (query.isBlank()) {
+            rawChapters
+        } else {
+            rawChapters.filter { ch ->
+                ch.name.contains(query, ignoreCase = true) ||
+                ch.subtopics.any { it.name.contains(query, ignoreCase = true) } ||
+                ch.importantFormulas.any { it.formulaName.contains(query, ignoreCase = true) }
+            }
+        }
+
+        val models = filtered.map { ch ->
+            val prog = progressMap[ch.name.lowercase()]
+            ComprehensiveChapterUiModel(chapter = ch, progress = prog)
+        }
 
         ChapterListUiState(
-            selectedClassTab = tab,
-            chaptersXi = xi,
-            chaptersXii = xii,
-            searchQuery = query
+            selectedMode = mode,
+            chapters = models,
+            searchQuery = query,
+            validationReport = MathematicsRepositoryCatalog.validateSyllabusHierarchy(),
+            showValidationDialog = showVal
         )
     }.stateIn(
         scope = viewModelScope,
@@ -51,11 +81,15 @@ class ChapterListViewModel(private val repository: MathRepository) : ViewModel()
         initialValue = ChapterListUiState()
     )
 
-    fun selectTab(stdClass: Int) {
-        _selectedTab.value = stdClass
+    fun selectMode(mode: SyllabusViewMode) {
+        _selectedMode.value = mode
     }
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    fun toggleValidationDialog(show: Boolean) {
+        _showValidation.value = show
     }
 }

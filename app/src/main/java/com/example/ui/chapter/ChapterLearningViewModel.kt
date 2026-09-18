@@ -4,13 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.entity.FormulaEntity
 import com.example.data.local.entity.QuestionEntity
+import com.example.data.model.ComprehensiveChapter
+import com.example.data.model.MathematicsRepositoryCatalog
 import com.example.data.repository.MathRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 data class ChapterLearningUiState(
     val chapterName: String = "",
-    val activeTab: Int = 1, // 0: Concept & Formula, 1: Practice Questions
+    val comprehensiveChapter: ComprehensiveChapter? = null,
+    val activeTab: Int = 0, // 0: Subtopics & Concepts, 1: Formulas & Shortcuts, 2: Solved Examples, 3: Quest Arena
     val questions: List<QuestionEntity> = emptyList(),
     val currentQuestionIndex: Int = 0,
     val selectedOption: String? = null,
@@ -27,10 +30,22 @@ data class ChapterLearningUiState(
 
 class ChapterLearningViewModel(
     private val repository: MathRepository,
-    private val chapterName: String
+    private val chapterName: String,
+    initialTab: Int = 0
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ChapterLearningUiState(chapterName = chapterName))
+    private val chapterMetadata = MathematicsRepositoryCatalog.getChapterByName(chapterName)
+        ?: MathematicsRepositoryCatalog.allChapters.firstOrNull {
+            it.name.contains(chapterName, ignoreCase = true) || chapterName.contains(it.name, ignoreCase = true)
+        }
+
+    private val _uiState = MutableStateFlow(
+        ChapterLearningUiState(
+            chapterName = chapterName,
+            comprehensiveChapter = chapterMetadata,
+            activeTab = initialTab
+        )
+    )
     val uiState: StateFlow<ChapterLearningUiState> = _uiState.asStateFlow()
 
     init {
@@ -103,8 +118,7 @@ class ChapterLearningViewModel(
                 isCorrect = false,
                 unlockedHints = 0,
                 showHintDialog = false,
-                showTeachMeDialog = false,
-                currentDifficulty = current.questions[nextIndex].difficulty
+                showTeachMeDialog = false
             )
         }
     }
@@ -113,15 +127,15 @@ class ChapterLearningViewModel(
         _uiState.value = _uiState.value.copy(showHintDialog = true)
     }
 
-    fun dismissHint() {
-        _uiState.value = _uiState.value.copy(showHintDialog = false)
-    }
-
     fun unlockNextHint() {
         val current = _uiState.value
         if (current.unlockedHints < 3) {
             _uiState.value = current.copy(unlockedHints = current.unlockedHints + 1)
         }
+    }
+
+    fun dismissHint() {
+        _uiState.value = _uiState.value.copy(showHintDialog = false)
     }
 
     fun showTeachMe() {

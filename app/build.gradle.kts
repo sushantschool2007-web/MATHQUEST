@@ -14,7 +14,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.cetmathquest.vkrp"
+    applicationId = "com.mathsquest.app"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
@@ -101,11 +101,12 @@ dependencies {
   // implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
-  // Uncomment to use Firestore:
-  // implementation(libs.firebase.firestore)
+  // Firestore Cloud Database
+  implementation(libs.firebase.firestore)
 
   // Firebase Auth
   implementation(libs.firebase.auth)
+  implementation(libs.firebase.auth.ktx)
   // implementation(libs.androidx.credentials)
   // implementation(libs.androidx.credentials.play.services)
   // implementation(libs.googleid)

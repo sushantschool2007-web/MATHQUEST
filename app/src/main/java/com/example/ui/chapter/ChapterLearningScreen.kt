@@ -3,6 +3,8 @@ package com.example.ui.chapter
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,7 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.ComprehensiveChapter
 import com.example.ui.components.*
+import com.example.ui.quiz.QuizQuestionPanel
 import com.example.ui.theme.*
 
 @Composable
@@ -32,12 +36,14 @@ fun ChapterLearningScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+    val ch = state.comprehensiveChapter
+    val isDark = ThemeController.isDarkTheme
 
     Scaffold(
-        containerColor = QuestNavyDark,
+        containerColor = if (isDark) DarkSpectrumBackground else LightSpectrumBackground,
         topBar = {
             QuestTopBar(
-                title = state.chapterName,
+                title = ch?.name ?: state.chapterName,
                 onBack = onBack,
                 streak = if (state.comboStreak > 1) state.comboStreak else null
             )
@@ -51,55 +57,219 @@ fun ChapterLearningScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Tab switch: Theory/Formulas vs Practice Quest
-            TabRow(
+            // Chapter Metadata Card Header
+            if (ch != null) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Std ${ch.standard} • Part ${ch.part} • Chapter ${ch.chapterNumber}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary
+                            )
+                            Surface(
+                                color = (if (isDark) DarkSpectrumAmber else Color(0xFFD97706)).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "Difficulty: ${ch.difficultyLevel}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isDark) DarkSpectrumAmber else Color(0xFFB45309),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+
+                        Text(
+                            text = ch.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                color = if (isDark) DarkSpectrumSurface else LightSpectrumSurface,
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text(
+                                        "MHT-CET Relevance",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary,
+                                        fontSize = 10.sp
+                                    )
+                                    Text(
+                                        ch.mhtCetRelevance,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary,
+                                        fontSize = 11.sp,
+                                        maxLines = 2
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                color = if (isDark) DarkSpectrumSurface else LightSpectrumSurface,
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text(
+                                        "JEE Main Relevance",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isDark) DarkSpectrumActionElectric else LightSpectrumActionIndigo,
+                                        fontSize = 10.sp
+                                    )
+                                    Text(
+                                        ch.jeeMainRelevance,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary,
+                                        fontSize = 11.sp,
+                                        maxLines = 2
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Tab switch: Subtopics | Formulas | Solved Examples | Practice Arena
+            ScrollableTabRow(
                 selectedTabIndex = state.activeTab,
-                containerColor = QuestNavyCard,
-                contentColor = QuestAccentGold,
+                containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard,
+                contentColor = if (isDark) DarkSpectrumActionPrimary else LightSpectrumActionPrimary,
+                edgePadding = 8.dp,
                 indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[state.activeTab]),
-                        color = QuestAccentGold
-                    )
+                    if (state.activeTab < tabPositions.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[state.activeTab]),
+                            color = if (isDark) DarkSpectrumActionPrimary else LightSpectrumActionPrimary
+                        )
+                    }
                 },
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, QuestNavyBorder, RoundedCornerShape(12.dp))
+                    .border(
+                        1.dp,
+                        if (isDark) DarkSpectrumBorder else LightSpectrumBorder,
+                        RoundedCornerShape(12.dp)
+                    )
             ) {
                 Tab(
                     selected = state.activeTab == 0,
                     onClick = { viewModel.selectTab(0) },
-                    text = { Text("Formulas & Concepts", fontWeight = if (state.activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                    text = {
+                        Text(
+                            "Concepts & Subtopics",
+                            fontSize = 12.sp,
+                            fontWeight = if (state.activeTab == 0) FontWeight.Bold else FontWeight.Normal,
+                            color = if (state.activeTab == 0) (if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary) else (if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary)
+                        )
+                    }
                 )
                 Tab(
                     selected = state.activeTab == 1,
                     onClick = { viewModel.selectTab(1) },
-                    text = { Text("Quest Arena", fontWeight = if (state.activeTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                    text = {
+                        Text(
+                            "Formulas & Shortcuts",
+                            fontSize = 12.sp,
+                            fontWeight = if (state.activeTab == 1) FontWeight.Bold else FontWeight.Normal,
+                            color = if (state.activeTab == 1) (if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary) else (if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary)
+                        )
+                    }
+                )
+                Tab(
+                    selected = state.activeTab == 2,
+                    onClick = { viewModel.selectTab(2) },
+                    text = {
+                        Text(
+                            "Solved Examples",
+                            fontSize = 12.sp,
+                            fontWeight = if (state.activeTab == 2) FontWeight.Bold else FontWeight.Normal,
+                            color = if (state.activeTab == 2) (if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary) else (if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary)
+                        )
+                    }
+                )
+                Tab(
+                    selected = state.activeTab == 3,
+                    onClick = { viewModel.selectTab(3) },
+                    text = {
+                        Text(
+                            "Quiz & Practice",
+                            fontSize = 12.sp,
+                            fontWeight = if (state.activeTab == 3) FontWeight.Bold else FontWeight.Normal,
+                            color = if (state.activeTab == 3) (if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary) else (if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary)
+                        )
+                    }
                 )
             }
 
-            if (state.activeTab == 0) {
-                // Formulas & Concepts view
-                TheorySection(state = state)
-            } else {
-                // Practice Quest view
-                if (state.questions.isNotEmpty()) {
-                    PracticeSection(
-                        state = state,
-                        onOptionSelect = viewModel::selectOption,
-                        onSubmit = viewModel::submitAnswer,
-                        onNext = viewModel::nextQuestion,
-                        onHintClick = viewModel::showHint,
-                        onTeachMeClick = viewModel::showTeachMe
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 40.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = QuestPrimaryBlue)
+            // Tab Content
+            when (state.activeTab) {
+                0 -> SubtopicsSection(ch = ch, isDark = isDark)
+                1 -> FormulasSection(ch = ch, dbFormulas = state.formulas, isDark = isDark)
+                2 -> SolvedExamplesSection(ch = ch, isDark = isDark)
+                3 -> {
+                    if (state.questions.isNotEmpty()) {
+                        val currentQ = state.questions[state.currentQuestionIndex]
+                        QuizQuestionPanel(
+                            question = currentQ,
+                            currentIndex = state.currentQuestionIndex,
+                            totalQuestions = state.questions.size,
+                            remainingSeconds = null,
+                            selectedOption = state.selectedOption,
+                            isSubmitted = state.isAnswerSubmitted,
+                            isCorrect = state.isCorrect,
+                            onOptionSelected = viewModel::selectOption,
+                            onSubmit = viewModel::submitAnswer,
+                            onNext = viewModel::nextQuestion,
+                            isDark = isDark
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Preparing practice questions...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
+                            )
+                        }
                     }
                 }
             }
@@ -138,78 +308,197 @@ fun ChapterLearningScreen(
 }
 
 @Composable
-private fun TheorySection(state: ChapterLearningUiState) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+private fun SubtopicsSection(ch: ComprehensiveChapter?, isDark: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = "ESSENTIAL FORMULAS & RESULTS",
+            text = "COMPLETE SUBTOPICS HIERARCHY",
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-            color = QuestTextTertiary
+            color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
         )
 
-        if (state.formulas.isEmpty()) {
+        if (ch != null) {
+            ch.subtopics.forEachIndexed { index, sub ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            color = (if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary).copy(alpha = 0.15f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "${index + 1}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary
+                                )
+                            }
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = sub.name,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary
+                            )
+                            Text(
+                                text = "ID: ${sub.id}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isDark) DarkSpectrumTextTertiary else LightSpectrumTextTertiary,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "KEY CONCEPTS & THEOREMS",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+                color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
+            )
+
+            ch.importantConcepts.forEach { concept ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            "•",
+                            color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = concept,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FormulasSection(
+    ch: ComprehensiveChapter?,
+    dbFormulas: List<com.example.data.local.entity.FormulaEntity>,
+    isDark: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "VERIFIED FORMULAS & SHORTCUTS",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+            color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
+        )
+
+        val catalogFormulas = ch?.importantFormulas ?: emptyList()
+
+        if (catalogFormulas.isEmpty() && dbFormulas.isEmpty()) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = QuestNavyCard),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
+                ),
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "Core identities for ${state.chapterName}",
+                        "Core identities for ${ch?.name ?: "this chapter"}",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = QuestTextPrimary
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Focus on high-yield formulas and standard transformation results tested in recent MHT-CET papers.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = QuestTextSecondary
+                        color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary
                     )
                 }
             }
         } else {
-            state.formulas.forEach { formula ->
+            catalogFormulas.forEach { f ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = QuestNavyCard),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
+                    ),
                     shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, QuestNavyBorder),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = formula.title,
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = QuestAccentGold
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Surface(
-                            color = QuestNavyDark,
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, QuestPrimaryBlue.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = formula.formula,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 15.sp,
-                                    lineHeight = 22.sp
-                                ),
-                                color = QuestTextPrimary,
-                                modifier = Modifier.padding(12.dp)
+                                text = f.formulaName,
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary
                             )
+                            Surface(
+                                color = (if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = f.topicId,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "When to Use: ${formula.whenToUse}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = QuestTextSecondary
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // LaTeX formatted math
+                        MathFormulaRenderer(
+                            rawFormula = f.formula,
+                            isDark = isDark
                         )
-                        if (formula.shortcut.isNotBlank()) {
-                            Spacer(Modifier.height(6.dp))
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Text(
+                            text = f.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
+                        )
+
+                        if (f.variables.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "⚡ Shortcut: ${formula.shortcut}",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                color = QuestAccentGoldLight
+                                text = "Variables: ${f.variables}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isDark) DarkSpectrumTextTertiary else LightSpectrumTextTertiary,
+                                fontSize = 11.sp
                             )
                         }
                     }
@@ -220,234 +509,111 @@ private fun TheorySection(state: ChapterLearningUiState) {
 }
 
 @Composable
-private fun PracticeSection(
-    state: ChapterLearningUiState,
-    onOptionSelect: (String) -> Unit,
-    onSubmit: () -> Unit,
-    onNext: () -> Unit,
-    onHintClick: () -> Unit,
-    onTeachMeClick: () -> Unit
-) {
-    val q = state.questions[state.currentQuestionIndex]
-
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // Progress & Level Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = QuestPrimaryBlue.copy(alpha = 0.2f),
-                shape = RoundedCornerShape(8.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, QuestPrimaryBlue.copy(alpha = 0.4f))
-            ) {
-                Text(
-                    text = q.difficulty,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = QuestPrimaryBlueLight,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-
-            Text(
-                text = "Q ${state.currentQuestionIndex + 1} of ${state.questions.size}",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = QuestTextSecondary
-            )
-        }
-
-        LinearProgressIndicator(
-            progress = { (state.currentQuestionIndex + 1).toFloat() / state.questions.size.toFloat() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(CircleShape),
-            color = QuestAccentGold,
-            trackColor = QuestNavyBorder
+private fun SolvedExamplesSection(ch: ComprehensiveChapter?, isDark: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "STEP-BY-STEP SOLVED EXAMPLES",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+            color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary
         )
 
-        // Question Card
-        Card(
-            colors = CardDefaults.cardColors(containerColor = QuestNavyCard),
-            shape = RoundedCornerShape(18.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, QuestNavyBorder),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = q.topic,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = QuestAccentGold
-                    )
-                    if (q.isPyq) {
-                        Surface(
-                            color = QuestAccentAmber.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = q.pyqYear ?: "PYQ",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = QuestAccentAmber,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                Text(
-                    text = q.question,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp
-                    ),
-                    color = QuestTextPrimary
-                )
-            }
-        }
-
-        // Options List
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(
-                "A" to q.optionA,
-                "B" to q.optionB,
-                "C" to q.optionC,
-                "D" to q.optionD
-            ).forEach { (letter, text) ->
-                OptionCard(
-                    optionLetter = letter,
-                    optionText = text,
-                    isSelected = state.selectedOption == letter,
-                    isAnswerRevealed = state.isAnswerSubmitted,
-                    isCorrectOption = letter == q.correctAnswer,
-                    onClick = { onOptionSelect(letter) }
-                )
-            }
-        }
-
-        // Action Buttons: Hint, Teach Me, Submit / Next
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            OutlinedButton(
-                onClick = onHintClick,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, QuestAccentGold.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = QuestAccentGoldLight),
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("hint_button")
-            ) {
-                Text("💡 Hint (${state.unlockedHints}/3)")
-            }
-
-            OutlinedButton(
-                onClick = onTeachMeClick,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, QuestPrimaryBlue.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = QuestPrimaryBlueLight),
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("teach_me_button")
-            ) {
-                Text("🎓 Teach Me")
-            }
-        }
-
-        // Explanation & Shortcut after submit
-        AnimatedVisibility(visible = state.isAnswerSubmitted) {
+        val examples = ch?.solvedExamples ?: emptyList()
+        if (examples.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (state.isCorrect) QuestSuccessGreen.copy(alpha = 0.15f) else QuestErrorRed.copy(alpha = 0.15f)
+                    containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
                 ),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (state.isCorrect) QuestSuccessGreen else QuestErrorRed
-                ),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (state.isCorrect) "🎉 Correct! +${state.earnedXp} XP" else "❌ Incorrect. Correct Option: ${q.correctAnswer}",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (state.isCorrect) QuestSuccessGreen else QuestErrorRed
-                        )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = q.explanation,
-                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 20.sp),
-                        color = QuestTextPrimary
-                    )
-
-                    if (q.shortcut.isNotBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Surface(
-                            color = QuestAccentGold.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, QuestAccentGold.copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "⚡ CET Shortcut: ${q.shortcut}",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = QuestAccentGoldLight,
-                                modifier = Modifier.padding(10.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Submit or Next Button
-        if (!state.isAnswerSubmitted) {
-            Button(
-                onClick = onSubmit,
-                enabled = state.selectedOption != null,
-                colors = ButtonDefaults.buttonColors(containerColor = QuestPrimaryBlue),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("submit_question_answer")
-            ) {
                 Text(
-                    "Submit Answer",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    text = "No examples available for this chapter.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary,
+                    modifier = Modifier.padding(16.dp)
                 )
             }
         } else {
-            Button(
-                onClick = onNext,
-                colors = ButtonDefaults.buttonColors(containerColor = QuestAccentGold),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("next_question_button")
-            ) {
-                Text(
-                    if (state.currentQuestionIndex < state.questions.size - 1) "Next Question →" else "Complete Chapter Session 🏆",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
-                    )
-                )
+            examples.forEach { ex ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) DarkSpectrumCard else LightSpectrumCard
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = ex.title,
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary
+                            )
+                            if (ex.keyConcept.isNotBlank()) {
+                                Surface(
+                                    color = (if (isDark) DarkSpectrumSuccess else LightSpectrumSuccess).copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = ex.keyConcept,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isDark) DarkSpectrumSuccess else LightSpectrumSuccess,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Surface(
+                            color = if (isDark) DarkSpectrumSurface else LightSpectrumSurface,
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isDark) DarkSpectrumBorder else LightSpectrumBorder
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Problem:",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary
+                                )
+                                Text(
+                                    text = formatLatexToReadableMath(ex.problem),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isDark) DarkSpectrumTextPrimary else LightSpectrumTextPrimary
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Text(
+                            text = "Solution & Method:",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (isDark) DarkSpectrumActionElectric else LightSpectrumActionIndigo
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = formatLatexToReadableMath(ex.solution),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDark) DarkSpectrumTextSecondary else LightSpectrumTextSecondary,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
             }
         }
-
-        Spacer(Modifier.height(20.dp))
     }
 }

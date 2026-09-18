@@ -1,12 +1,12 @@
 package com.example.data.repository
 
 import com.example.data.local.DataStoreManager
-import com.example.util.PasswordSecurity
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -27,109 +27,109 @@ class AuthRepository(
     private val dataStoreManager: DataStoreManager,
     private val firebaseAuth: FirebaseAuth? = null
 ) {
-    private val hasRemoteFirebase: Boolean
-        get() = firebaseAuth != null && try {
-            val key = firebaseAuth.app.options.apiKey
-            key.isNotBlank() && !key.contains("FakeKey", ignoreCase = true) && !key.contains("AIzaSyFake", ignoreCase = true)
-        } catch (_: Exception) {
-            false
-        }
+    private val auth: FirebaseAuth
+        get() = firebaseAuth ?: FirebaseAuth.getInstance()
 
     suspend fun getCurrentUser(): AuthUser? {
-        if (hasRemoteFirebase) {
-            val fbUser = firebaseAuth?.currentUser
+        return try {
+            val fbUser = auth.currentUser
             if (fbUser != null) {
-                return AuthUser(
+                AuthUser(
                     uid = fbUser.uid,
                     email = fbUser.email ?: "",
                     displayName = fbUser.displayName?.takeIf { it.isNotBlank() }
                         ?: fbUser.email?.substringBefore("@")
                         ?: "Aspirant"
                 )
+            } else {
+                null
             }
-        }
-        val prefs = dataStoreManager.userPreferencesFlow.firstOrNull()
-        return if (prefs?.isLoggedIn == true) {
-            AuthUser(
-                uid = prefs.userId.ifBlank { "local_user" },
-                email = prefs.userEmail.ifBlank { "aspirant@cetquest.edu" },
-                displayName = prefs.studentName.ifBlank { "Aspirant" }
-            )
-        } else {
-            null
+        } catch (_: Exception) {
+            val prefs = dataStoreManager.userPreferencesFlow.firstOrNull()
+            if (prefs?.isLoggedIn == true) {
+                AuthUser(
+                    uid = prefs.userId.ifBlank { "guest_user" },
+                    email = prefs.userEmail.ifBlank { "aspirant@cetquest.edu" },
+                    displayName = prefs.studentName.ifBlank { "Aspirant" }
+                )
+            } else {
+                null
+            }
         }
     }
 
     fun isUserLoggedIn(): Boolean {
-        return hasRemoteFirebase && firebaseAuth?.currentUser != null
+        return try {
+            auth.currentUser != null
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun isEmailVerified(): Boolean {
+        return try {
+            val user = auth.currentUser ?: return false
+            user.isAnonymous || user.isEmailVerified
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun sendEmailVerification(): Result<Unit> {
+        val user = auth.currentUser
+            ?: return Result.failure(Exception("No signed-in user found."))
+        return try {
+            user.sendEmailVerification().awaitTask()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception(getFriendlyErrorMessage(e)))
+        }
+    }
+
+    suspend fun reloadUser(): Result<Boolean> {
+        val user = auth.currentUser
+            ?: return Result.failure(Exception("No signed-in user found."))
+        return try {
+            user.reload().awaitTask()
+            Result.success(user.isAnonymous || user.isEmailVerified)
+        } catch (e: Exception) {
+            Result.failure(Exception(getFriendlyErrorMessage(e)))
+        }
     }
 
     suspend fun signInWithEmailAndPassword(email: String, password: String): Result<AuthUser> {
         val cleanEmail = email.trim()
         if (cleanEmail.isBlank()) {
-            return Result.failure(Exception("Email cannot be empty."))
+            return Result.failure(IllegalArgumentException("Email address cannot be empty."))
         }
-        if (password.length < 6) {
-            return Result.failure(Exception("Password must be at least 6 characters."))
-        }
-
-        // Try Remote Firebase if configured with valid key
-        if (hasRemoteFirebase && firebaseAuth != null) {
-            try {
-                val authResult = firebaseAuth.signInWithEmailAndPassword(cleanEmail, password).awaitTask()
-                val user = authResult.user
-                if (user != null) {
-                    val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: cleanEmail.substringBefore("@")
-                    mathRepository.saveUserProfile(
-                        uid = user.uid,
-                        email = user.email ?: cleanEmail,
-                        displayName = resolvedName
-                    )
-                    return Result.success(AuthUser(user.uid, user.email ?: cleanEmail, resolvedName))
-                }
-            } catch (e: Exception) {
-                val msg = e.localizedMessage ?: ""
-                val isApiKeyIssue = msg.contains("API key", ignoreCase = true) ||
-                        msg.contains("Recaptcha", ignoreCase = true) ||
-                        msg.contains("internal error", ignoreCase = true)
-                if (!isApiKeyIssue) {
-                    return Result.failure(Exception(getFriendlyErrorMessage(e)))
-                }
-            }
+        if (password.isBlank()) {
+            return Result.failure(IllegalArgumentException("Password cannot be empty."))
         }
 
-        // Fast & Reliable Local Room Database Authentication
-        val existingProfile = mathRepository.findProfileByEmail(cleanEmail)
-        return if (existingProfile != null) {
-            if (existingProfile.passwordHash.isNotBlank()) {
-                val isMatch = PasswordSecurity.verifyPassword(password, existingProfile.salt, existingProfile.passwordHash)
-                if (isMatch) {
-                    mathRepository.saveUserProfile(
-                        uid = existingProfile.uid,
-                        email = existingProfile.email,
-                        displayName = existingProfile.displayName,
-                        passwordHash = existingProfile.passwordHash,
-                        salt = existingProfile.salt
-                    )
-                    Result.success(AuthUser(existingProfile.uid, existingProfile.email, existingProfile.displayName))
-                } else {
-                    Result.failure(Exception("Incorrect password. Please check and try again."))
-                }
-            } else {
-                // First-time password assignment for existing profile
-                val salt = PasswordSecurity.generateSalt()
-                val hash = PasswordSecurity.hashPassword(password, salt)
-                mathRepository.saveUserProfile(
-                    uid = existingProfile.uid,
-                    email = existingProfile.email,
-                    displayName = existingProfile.displayName,
-                    passwordHash = hash,
-                    salt = salt
-                )
-                Result.success(AuthUser(existingProfile.uid, existingProfile.email, existingProfile.displayName))
+        return try {
+            val authResult = auth.signInWithEmailAndPassword(cleanEmail, password).awaitTask()
+            val user = authResult.user
+                ?: return Result.failure(Exception("Unable to retrieve user credentials."))
+
+            val resolvedName = user.displayName?.takeIf { it.isNotBlank() }
+                ?: cleanEmail.substringBefore("@")
+
+            // If the user is signing into this device for the first time, initialize progress to zero (0/150 XP)
+            val hasExistingProfile = mathRepository.hasUserProfile(user.uid)
+            if (!hasExistingProfile) {
+                mathRepository.initializeNewUserProgress()
             }
-        } else {
-            Result.failure(Exception("No account found with this email. Please tap 'Create Account' to sign up."))
+
+            // Sync user profile in Room and DataStore session
+            mathRepository.saveUserProfile(
+                uid = user.uid,
+                email = user.email ?: cleanEmail,
+                displayName = resolvedName
+            )
+
+            Result.success(AuthUser(user.uid, user.email ?: cleanEmail, resolvedName))
+        } catch (e: Exception) {
+            Result.failure(Exception(getFriendlyErrorMessage(e)))
         }
     }
 
@@ -142,123 +142,122 @@ class AuthRepository(
         val cleanEmail = email.trim()
 
         if (cleanEmail.isBlank()) {
-            return Result.failure(Exception("Email cannot be empty."))
+            return Result.failure(IllegalArgumentException("Email address cannot be empty."))
         }
         if (password.length < 6) {
-            return Result.failure(Exception("Password must be at least 6 characters."))
+            return Result.failure(IllegalArgumentException("Password must be at least 6 characters."))
         }
 
-        // Check if an account already exists locally with this email
-        val existingLocal = mathRepository.findProfileByEmail(cleanEmail)
-        if (existingLocal != null && existingLocal.passwordHash.isNotBlank()) {
-            return Result.failure(Exception("An account with this email already exists. Please log in."))
-        }
+        return try {
+            val authResult = auth.createUserWithEmailAndPassword(cleanEmail, password).awaitTask()
+            val user = authResult.user
+                ?: return Result.failure(Exception("Registration succeeded but user details are unavailable."))
 
-        // Try Firebase if configured
-        if (hasRemoteFirebase && firebaseAuth != null) {
+            // Set user's display name in Firebase Auth
+            val profileUpdates = UserProfileChangeRequest.Builder()
+                .setDisplayName(cleanName)
+                .build()
             try {
-                val authResult = firebaseAuth.createUserWithEmailAndPassword(cleanEmail, password).awaitTask()
-                val user = authResult.user
-                if (user != null) {
-                    val profileUpdates = UserProfileChangeRequest.Builder()
-                        .setDisplayName(cleanName)
-                        .build()
-                    try {
-                        user.updateProfile(profileUpdates).awaitTask()
-                    } catch (_: Exception) {}
+                user.updateProfile(profileUpdates).awaitTask()
+            } catch (_: Exception) {}
 
-                    val salt = PasswordSecurity.generateSalt()
-                    val hash = PasswordSecurity.hashPassword(password, salt)
-                    mathRepository.saveUserProfile(
-                        uid = user.uid,
-                        email = user.email ?: cleanEmail,
-                        displayName = cleanName,
-                        passwordHash = hash,
-                        salt = salt
-                    )
-                    return Result.success(AuthUser(user.uid, cleanEmail, cleanName))
-                }
-            } catch (e: Exception) {
-                val msg = e.localizedMessage ?: ""
-                val isApiKeyIssue = msg.contains("API key", ignoreCase = true) ||
-                        msg.contains("Recaptcha", ignoreCase = true) ||
-                        msg.contains("internal error", ignoreCase = true)
-                if (!isApiKeyIssue) {
-                    return Result.failure(Exception(getFriendlyErrorMessage(e)))
-                }
-            }
+            // Send verification email to user
+            try {
+                user.sendEmailVerification().awaitTask()
+            } catch (_: Exception) {}
+
+            // New user registration: reset all user progress (XP, levels, chapters) strictly to 0 (0/150 XP)
+            mathRepository.initializeNewUserProgress()
+
+            // Save user profile in Room and DataStore session
+            mathRepository.saveUserProfile(
+                uid = user.uid,
+                email = user.email ?: cleanEmail,
+                displayName = cleanName
+            )
+
+            Result.success(AuthUser(user.uid, user.email ?: cleanEmail, cleanName))
+        } catch (e: Exception) {
+            Result.failure(Exception(getFriendlyErrorMessage(e)))
+        }
+    }
+
+    suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
+        val cleanEmail = email.trim()
+        if (cleanEmail.isBlank()) {
+            return Result.failure(IllegalArgumentException("Please enter a valid email address."))
         }
 
-        // Local Account Creation via Room & PasswordSecurity
-        val uid = "cet_user_${UUID.randomUUID().toString().take(8)}"
-        val salt = PasswordSecurity.generateSalt()
-        val hash = PasswordSecurity.hashPassword(password, salt)
-        mathRepository.saveUserProfile(
-            uid = uid,
-            email = cleanEmail,
-            displayName = cleanName,
-            passwordHash = hash,
-            salt = salt
-        )
-        return Result.success(AuthUser(uid = uid, email = cleanEmail, displayName = cleanName))
+        return try {
+            auth.sendPasswordResetEmail(cleanEmail).awaitTask()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception(getFriendlyErrorMessage(e)))
+        }
     }
 
     suspend fun signInAsGuest(): Result<AuthUser> {
-        val uid = "guest_${UUID.randomUUID().toString().take(6)}"
-        val email = "guest_${System.currentTimeMillis() % 10000}@cetquest.edu"
-        val name = "CET Aspirant"
-        mathRepository.saveUserProfile(
-            uid = uid,
-            email = email,
-            displayName = name
-        )
-        return Result.success(AuthUser(uid = uid, email = email, displayName = name))
-    }
+        return try {
+            val authResult = auth.signInAnonymously().awaitTask()
+            val user = authResult.user
+            val uid = user?.uid ?: "guest_${UUID.randomUUID().toString().take(6)}"
+            val email = user?.email ?: "guest_${System.currentTimeMillis() % 10000}@cetquest.edu"
+            val name = "CET Aspirant"
 
-    suspend fun sendPasswordResetEmail(email: String, newPassword: String? = null): Result<Unit> {
-        val cleanEmail = email.trim()
-        val profile = mathRepository.findProfileByEmail(cleanEmail)
-        if (profile == null) {
-            return Result.failure(Exception("No account found with email $cleanEmail."))
-        }
+            mathRepository.initializeNewUserProgress()
+            mathRepository.saveUserProfile(uid, email, name)
 
-        if (!newPassword.isNullOrBlank()) {
-            val salt = PasswordSecurity.generateSalt()
-            val hash = PasswordSecurity.hashPassword(newPassword, salt)
-            mathRepository.updateUserPassword(cleanEmail, hash, salt)
-        }
+            Result.success(AuthUser(uid, email, name))
+        } catch (e: Exception) {
+            // Fallback if anonymous auth is not enabled on Firebase
+            val uid = "guest_${UUID.randomUUID().toString().take(6)}"
+            val email = "guest_${System.currentTimeMillis() % 10000}@cetquest.edu"
+            val name = "CET Aspirant"
 
-        if (hasRemoteFirebase && firebaseAuth != null) {
-            try {
-                firebaseAuth.sendPasswordResetEmail(cleanEmail).awaitTask()
-            } catch (_: Exception) {}
+            mathRepository.initializeNewUserProgress()
+            mathRepository.saveUserProfile(uid, email, name)
+
+            Result.success(AuthUser(uid, email, name))
         }
-        return Result.success(Unit)
     }
 
     suspend fun signOut() {
-        if (hasRemoteFirebase && firebaseAuth != null) {
-            try {
-                firebaseAuth.signOut()
-            } catch (_: Exception) {}
-        }
+        try {
+            auth.signOut()
+        } catch (_: Exception) {}
         mathRepository.clearUserSession()
     }
 
     private fun getFriendlyErrorMessage(exception: Exception): String {
         return when (exception) {
-            is FirebaseAuthInvalidUserException -> "No account found with this email address. Please register first."
-            is FirebaseAuthInvalidCredentialsException -> "Incorrect email or password. Please verify and try again."
-            is FirebaseAuthWeakPasswordException -> "Password is too weak. Please use at least 6 characters."
-            is FirebaseAuthUserCollisionException -> "An account with this email already exists. Please log in."
-            is FirebaseAuthException -> exception.localizedMessage ?: "Authentication failed."
+            is FirebaseAuthWeakPasswordException ->
+                "Weak password: ${exception.reason ?: "Please use at least 6 characters."}"
+            is FirebaseAuthInvalidCredentialsException ->
+                "Invalid credentials. Please check your email and password."
+            is FirebaseAuthInvalidUserException -> {
+                when (exception.errorCode) {
+                    "ERROR_USER_NOT_FOUND" -> "No account found with this email. Tap 'Create Account' to sign up."
+                    "ERROR_USER_DISABLED" -> "This account has been disabled. Please contact support."
+                    else -> "No account found with this email or credentials invalid."
+                }
+            }
+            is FirebaseAuthUserCollisionException ->
+                "An account with this email already exists. Please sign in instead."
+            is FirebaseAuthRecentLoginRequiredException ->
+                "This action requires recent authentication. Please log in again."
+            is FirebaseAuthException ->
+                exception.localizedMessage ?: "Authentication failed (${exception.errorCode})."
+            is IllegalArgumentException ->
+                exception.message ?: "Invalid input provided."
             else -> {
                 val msg = exception.localizedMessage ?: ""
                 when {
-                    msg.contains("API key", ignoreCase = true) -> "Invalid API configuration."
-                    msg.contains("network", ignoreCase = true) -> "Network error. Please check your internet connection."
-                    msg.contains("password", ignoreCase = true) -> "Invalid password. Must be at least 6 characters."
-                    msg.contains("email", ignoreCase = true) -> "Please enter a valid email address."
+                    msg.contains("network", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) ->
+                        "Network connection error. Please check your internet connection and try again."
+                    msg.contains("badly formatted", ignoreCase = true) ->
+                        "The email address format is invalid. Please verify and try again."
+                    msg.contains("API key not valid", ignoreCase = true) ->
+                        "Firebase configuration error. Please verify google-services.json."
                     msg.isNotBlank() -> msg
                     else -> "Authentication failed. Please try again."
                 }

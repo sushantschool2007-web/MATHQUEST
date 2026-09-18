@@ -42,14 +42,13 @@ import com.example.ui.theme.*
 fun LoginScreen(
     viewModel: AuthViewModel,
     onNavigateToRegister: () -> Unit,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: (isEmailVerified: Boolean) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     var showForgotPasswordDialog by remember { mutableStateOf(false) }
     var forgotEmail by remember { mutableStateOf("") }
-    var newPasswordInput by remember { mutableStateOf("") }
 
     // Display snackbar on message
     LaunchedEffect(uiState.snackbarMessage) {
@@ -60,9 +59,9 @@ fun LoginScreen(
     }
 
     // Auto navigate on authenticated state
-    LaunchedEffect(uiState.authState) {
+    LaunchedEffect(uiState.authState, uiState.isEmailVerified) {
         if (uiState.authState is AuthState.Authenticated) {
-            onLoginSuccess()
+            onLoginSuccess(uiState.isEmailVerified)
         }
     }
 
@@ -297,7 +296,7 @@ fun LoginScreen(
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                viewModel.login(onLoginSuccess)
+                                viewModel.login(onSuccess = { isVerified -> onLoginSuccess(isVerified) })
                             },
                             enabled = uiState.authState !is AuthState.Loading,
                             colors = ButtonDefaults.buttonColors(
@@ -354,7 +353,7 @@ fun LoginScreen(
                         OutlinedButton(
                             onClick = {
                                 focusManager.clearFocus()
-                                viewModel.loginAsGuest(onLoginSuccess)
+                                viewModel.loginAsGuest(onSuccess = { onLoginSuccess(true) })
                             },
                             enabled = uiState.authState !is AuthState.Loading,
                             colors = ButtonDefaults.outlinedButtonColors(
@@ -442,35 +441,12 @@ fun LoginScreen(
                             .fillMaxWidth()
                             .testTag("forgot_password_email_input")
                     )
-
-                    OutlinedTextField(
-                        value = newPasswordInput,
-                        onValueChange = { newPasswordInput = it },
-                        label = { Text("New Password (optional)") },
-                        placeholder = { Text("Min 6 characters to set now") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = QuestAccentGold,
-                            unfocusedBorderColor = QuestNavyBorder,
-                            focusedTextColor = QuestTextPrimary,
-                            unfocusedTextColor = QuestTextPrimary,
-                            focusedContainerColor = QuestNavySurface,
-                            unfocusedContainerColor = QuestNavySurface
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("forgot_password_new_password_input")
-                    )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.sendPasswordReset(
-                            forgotEmail,
-                            newPasswordInput.takeIf { it.isNotBlank() }
-                        )
+                        viewModel.sendPasswordReset(forgotEmail)
                         showForgotPasswordDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -480,7 +456,7 @@ fun LoginScreen(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.testTag("send_reset_button")
                 ) {
-                    Text(if (newPasswordInput.isNotBlank()) "Set New Password" else "Send Reset Link", fontWeight = FontWeight.Bold)
+                    Text("Send Reset Link", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

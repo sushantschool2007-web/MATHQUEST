@@ -143,3 +143,31 @@ data class UserProfileEntity(
     val lastLoginAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "students")
+data class StudentEntity(
+    @PrimaryKey
+    val studentId: String,
+    val name: String,
+    val email: String,
+    val standard: Int = 12, // 11 or 12
+    val targetExam: String = "MHT-CET 2026",
+    val enrollmentDate: Long = System.currentTimeMillis(),
+    val lastActiveTimestamp: Long = System.currentTimeMillis(),
+    val xp: Int = 1200,
+    val levelNumber: Int = 3,
+    val levelTitle: String = "Formula Apprentice",
+    val streakDays: Int = 4,
+    val totalSolved: Int = 45,
+    val totalCorrect: Int = 38,
+    val accuracy: Float = 84.4f,
+    val studyTimeMinutes: Int = 120,
+    val mockTestsTaken: Int = 2,
+    val mockTestBestScore: Int = 82, // out of 100
+    val mockTestAvgScore: Int = 76,
+    val chaptersMastered: Int = 3,
+    val totalMistakes: Int = 7,
+    val weakTopics: String = "Integration, Conics",
+    val strongTopics: String = "Matrices, Logic, Vectors",
+    val notes: String = ""
+)
+

@@ -18,6 +18,9 @@ sealed interface AuthState {
 
 data class AuthUiState(
     val authState: AuthState = AuthState.Unauthenticated,
+    val isEmailVerified: Boolean = false,
+    val isCheckingVerification: Boolean = false,
+    val isSendingVerification: Boolean = false,
     val name: String = "",
     val email: String = "",
     val password: String = "",
@@ -46,6 +49,7 @@ class AuthViewModel(
     fun checkCurrentUser() {
         viewModelScope.launch {
             val currentUser = authRepository.getCurrentUser()
+            val verified = authRepository.isEmailVerified()
             if (currentUser != null) {
                 _uiState.update {
                     it.copy(
@@ -53,11 +57,13 @@ class AuthViewModel(
                             uid = currentUser.uid,
                             email = currentUser.email,
                             displayName = currentUser.displayName
-                        )
+                        ),
+                        email = currentUser.email,
+                        isEmailVerified = verified
                     )
                 }
             } else {
-                _uiState.update { it.copy(authState = AuthState.Unauthenticated) }
+                _uiState.update { it.copy(authState = AuthState.Unauthenticated, isEmailVerified = false) }
             }
         }
     }
@@ -90,13 +96,7 @@ class AuthViewModel(
         _uiState.update { it.copy(snackbarMessage = null, resetEmailSentMessage = null) }
     }
 
-    fun clearError() {
-        if (_uiState.value.authState is AuthState.Error) {
-            _uiState.update { it.copy(authState = AuthState.Unauthenticated) }
-        }
-    }
-
-    fun login(onSuccess: () -> Unit = {}) {
+    fun login(onSuccess: (isVerified: Boolean) -> Unit = {}) {
         val state = _uiState.value
         val email = state.email.trim()
         val password = state.password
@@ -136,6 +136,7 @@ class AuthViewModel(
             _uiState.update { it.copy(authState = AuthState.Loading, snackbarMessage = null) }
             val result = authRepository.signInWithEmailAndPassword(email, password)
             result.onSuccess { user ->
+                val verified = authRepository.isEmailVerified()
                 _uiState.update {
                     it.copy(
                         authState = AuthState.Authenticated(
@@ -143,11 +144,13 @@ class AuthViewModel(
                             email = user.email,
                             displayName = user.displayName
                         ),
+                        email = user.email,
                         password = "",
-                        snackbarMessage = "Welcome back, ${user.displayName}!"
+                        isEmailVerified = verified,
+                        snackbarMessage = if (verified) "Welcome back, ${user.displayName}!" else "Please verify your email address to proceed."
                     )
                 }
-                onSuccess()
+                onSuccess(verified)
             }.onFailure { error ->
                 val errorMsg = error.localizedMessage ?: "Login failed. Please try again."
                 _uiState.update {
@@ -172,6 +175,7 @@ class AuthViewModel(
                             email = user.email,
                             displayName = user.displayName
                         ),
+                        isEmailVerified = true,
                         snackbarMessage = "Welcome, CET Aspirant!"
                     )
                 }
@@ -188,7 +192,7 @@ class AuthViewModel(
         }
     }
 
-    fun register(onSuccess: () -> Unit = {}) {
+    fun register(onSuccess: (isVerified: Boolean) -> Unit = {}) {
         val state = _uiState.value
         val name = state.name.trim()
         val email = state.email.trim()
@@ -244,6 +248,7 @@ class AuthViewModel(
             _uiState.update { it.copy(authState = AuthState.Loading, snackbarMessage = null) }
             val result = authRepository.createUserWithEmailAndPassword(name, email, password)
             result.onSuccess { user ->
+                val verified = authRepository.isEmailVerified()
                 _uiState.update {
                     it.copy(
                         authState = AuthState.Authenticated(
@@ -251,12 +256,14 @@ class AuthViewModel(
                             email = user.email,
                             displayName = user.displayName
                         ),
+                        email = user.email,
                         password = "",
                         confirmPassword = "",
-                        snackbarMessage = "Account created! Welcome to CET Math Quest, ${user.displayName}."
+                        isEmailVerified = verified,
+                        snackbarMessage = "Account created! Verification link sent to ${user.email}."
                     )
                 }
-                onSuccess()
+                onSuccess(verified)
             }.onFailure { error ->
                 val errorMsg = error.localizedMessage ?: "Registration failed. Please try again."
                 _uiState.update {
@@ -269,7 +276,7 @@ class AuthViewModel(
         }
     }
 
-    fun sendPasswordReset(targetEmail: String? = null, newPassword: String? = null) {
+    fun sendPasswordReset(targetEmail: String? = null) {
         val emailToSend = (targetEmail ?: _uiState.value.email).trim()
         if (emailToSend.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(emailToSend).matches()) {
             _uiState.update {
@@ -283,17 +290,17 @@ class AuthViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(authState = AuthState.Loading) }
-            val result = authRepository.sendPasswordResetEmail(emailToSend, newPassword)
+            val result = authRepository.sendPasswordResetEmail(emailToSend)
             result.onSuccess {
                 _uiState.update {
                     it.copy(
                         authState = AuthState.Unauthenticated,
-                        resetEmailSentMessage = "Password reset successfully for $emailToSend",
-                        snackbarMessage = "Password updated! You can now log in."
+                        resetEmailSentMessage = "Password reset email sent to $emailToSend",
+                        snackbarMessage = "Password reset link sent to $emailToSend. Please check your inbox!"
                     )
                 }
             }.onFailure { error ->
-                val errorMsg = error.localizedMessage ?: "Could not reset password."
+                val errorMsg = error.localizedMessage ?: "Could not send password reset email."
                 _uiState.update {
                     it.copy(
                         authState = AuthState.Unauthenticated,
@@ -304,16 +311,66 @@ class AuthViewModel(
         }
     }
 
-    fun signOut(onComplete: () -> Unit = {}) {
+    fun resendVerificationEmail() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSendingVerification = true) }
+            val result = authRepository.sendEmailVerification()
+            result.onSuccess {
+                val email = _uiState.value.email.ifBlank { "your email" }
+                _uiState.update {
+                    it.copy(
+                        isSendingVerification = false,
+                        snackbarMessage = "Verification link sent to $email! Check inbox and spam."
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isSendingVerification = false,
+                        snackbarMessage = error.localizedMessage ?: "Could not send verification email."
+                    )
+                }
+            }
+        }
+    }
+
+    fun checkEmailVerification(onVerified: () -> Unit) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCheckingVerification = true) }
+            val result = authRepository.reloadUser()
+            result.onSuccess { isVerified ->
+                _uiState.update {
+                    it.copy(
+                        isCheckingVerification = false,
+                        isEmailVerified = isVerified,
+                        snackbarMessage = if (isVerified) "Email verified successfully! Welcome!" else "Email not verified yet. Please click the link in your email."
+                    )
+                }
+                if (isVerified) {
+                    onVerified()
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isCheckingVerification = false,
+                        snackbarMessage = error.localizedMessage ?: "Verification check failed. Please try again."
+                    )
+                }
+            }
+        }
+    }
+
+    fun signOut(onSignedOut: () -> Unit = {}) {
         viewModelScope.launch {
             authRepository.signOut()
             _uiState.update {
                 AuthUiState(
                     authState = AuthState.Unauthenticated,
-                    snackbarMessage = "Logged out successfully"
+                    isEmailVerified = false,
+                    snackbarMessage = "Signed out successfully."
                 )
             }
-            onComplete()
+            onSignedOut()
         }
     }
 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,7 +42,8 @@ fun HomeScreen(
     onLeaderboard: () -> Unit,
     onAchievements: () -> Unit,
     onAnalytics: () -> Unit,
-    onProfile: () -> Unit
+    onProfile: () -> Unit,
+    onAdminDashboard: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs = state.userPrefs
@@ -52,8 +54,8 @@ fun HomeScreen(
         topBar = {
             QuestTopBar(
                 title = "CET MATH QUEST",
-                xp = prefs?.totalXp ?: 50,
-                streak = prefs?.streakDays ?: 1,
+                xp = prefs?.totalXp ?: 0,
+                streak = prefs?.streakDays ?: 0,
                 hearts = prefs?.hearts ?: 5
             )
         }
@@ -127,39 +129,25 @@ fun HomeScreen(
                             )
                         }
                     }
-
-                    Spacer(Modifier.height(14.dp))
-
-                    // XP Progress bar
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Level Progress",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = QuestTextSecondary
-                        )
-                        Text(
-                            text = "${prefs?.totalXp ?: 0} / ${state.nextLevelInfo?.minXP ?: 5000} XP",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = QuestAccentGoldLight
-                        )
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-
-                    LinearProgressIndicator(
-                        progress = { state.levelProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(CircleShape),
-                        color = QuestAccentGold,
-                        trackColor = QuestNavySurface
-                    )
                 }
             }
+
+            // Daily goal progress wheel showing completed subtopics, streak counter, and current level/XP
+            val completedSubtopicsCount = ((prefs?.totalSolved ?: 0) / 3).coerceAtMost(5)
+            DailyGoalProgressWheelCard(
+                completedSubtopics = completedSubtopicsCount,
+                targetSubtopics = 5,
+                streakDays = prefs?.streakDays ?: 1,
+                levelNumber = state.levelInfo.levelNumber,
+                levelTitle = state.levelInfo.title,
+                currentXp = prefs?.totalXp ?: 0,
+                nextLevelXp = state.nextLevelInfo?.minXP ?: 5000
+            )
+
+            // Subject selection cards (Std 11, Std 12, MHT-CET, JEE Main) with progress bars
+            SubjectSelectionSection(
+                onTrackSelected = { _ -> onChapters() }
+            )
 
             // 2. Metrics Grid: Questions Solved, Accuracy, Study Time, Streak
             Row(
@@ -411,6 +399,73 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     tag = "tile_achievements"
                 )
+            }
+
+            // 5. Admin Dashboard Entry Card (Allows seamless access between User Dashboard and Admin Dashboard)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAdminDashboard() }
+                    .testTag("home_admin_dashboard_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1B4B)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFFA855F7)))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("👑", fontSize = 22.sp)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "ADMIN DASHBOARD",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Surface(
+                                    color = Color(0xFF6366F1),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "PORTAL",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "Student cohort records, progress & content authoring",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFC7D2FE)
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Open Admin Dashboard",
+                        tint = Color(0xFFA5B4FC)
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
