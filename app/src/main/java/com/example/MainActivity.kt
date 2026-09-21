@@ -120,6 +120,11 @@ fun QuestAppNav(
                     navController.navigate(nextRoute) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
+                },
+                onAdminLoginSuccess = {
+                    navController.navigate(Screen.AdminDashboard.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
                 }
             )
         }

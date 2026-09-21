@@ -180,6 +180,12 @@ interface UserProfileDao {
     @Query("SELECT * FROM user_profiles ORDER BY lastLoginAt DESC LIMIT 1")
     fun getLatestUserProfile(): Flow<UserProfileEntity?>
 
+    @Query("SELECT * FROM user_profiles ORDER BY lastLoginAt DESC")
+    fun getAllUserProfiles(): Flow<List<UserProfileEntity>>
+
+    @Query("SELECT COUNT(*) FROM user_profiles")
+    suspend fun getUserProfileCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateProfile(profile: UserProfileEntity)
 
@@ -218,6 +224,33 @@ interface StudentDao {
 
     @Query("SELECT COUNT(*) FROM students")
     suspend fun getStudentCount(): Int
+}
+
+@Dao
+interface UserLoginHistoryDao {
+    @Query("SELECT * FROM user_login_history ORDER BY loginTimestamp DESC")
+    fun getAllLoginHistory(): Flow<List<UserLoginHistoryEntity>>
+
+    @Query("SELECT * FROM user_login_history WHERE LOWER(email) LIKE '%' || LOWER(:query) || '%' OR LOWER(displayName) LIKE '%' || LOWER(:query) || '%' ORDER BY loginTimestamp DESC")
+    fun searchLoginHistory(query: String): Flow<List<UserLoginHistoryEntity>>
+
+    @Query("SELECT * FROM user_login_history ORDER BY loginTimestamp DESC LIMIT :limit")
+    fun getRecentLogins(limit: Int): Flow<List<UserLoginHistoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLogin(login: UserLoginHistoryEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLogins(logins: List<UserLoginHistoryEntity>)
+
+    @Query("DELETE FROM user_login_history WHERE id = :id")
+    suspend fun deleteLogin(id: Long)
+
+    @Query("DELETE FROM user_login_history")
+    suspend fun clearHistory()
+
+    @Query("SELECT COUNT(*) FROM user_login_history")
+    suspend fun getLoginCount(): Int
 }
 
 

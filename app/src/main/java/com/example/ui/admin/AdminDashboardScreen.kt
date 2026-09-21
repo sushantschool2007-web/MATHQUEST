@@ -154,10 +154,11 @@ fun AdminDashboardScreen(
                 .padding(innerPadding)
         ) {
             // Main Admin Tabs
-            TabRow(
+            ScrollableTabRow(
                 selectedTabIndex = state.activeTab,
                 containerColor = if (isDark) QuestNavySurface else LightSpectrumSurface,
-                contentColor = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary
+                contentColor = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary,
+                edgePadding = 12.dp
             ) {
                 Tab(
                     selected = state.activeTab == 0,
@@ -175,19 +176,30 @@ fun AdminDashboardScreen(
                     onClick = { viewModel.setActiveTab(1) },
                     text = {
                         Text(
-                            "Add Content",
+                            "User Logins & Emails (${state.loginHistory.size})",
                             fontWeight = if (state.activeTab == 1) FontWeight.Bold else FontWeight.Normal
                         )
                     },
-                    icon = { Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    icon = { Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
                 Tab(
                     selected = state.activeTab == 2,
                     onClick = { viewModel.setActiveTab(2) },
                     text = {
                         Text(
-                            "Analytics",
+                            "Add Content",
                             fontWeight = if (state.activeTab == 2) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    icon = { Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+                Tab(
+                    selected = state.activeTab == 3,
+                    onClick = { viewModel.setActiveTab(3) },
+                    text = {
+                        Text(
+                            "Analytics",
+                            fontWeight = if (state.activeTab == 3) FontWeight.Bold else FontWeight.Normal
                         )
                     },
                     icon = { Icon(Icons.Default.Analytics, contentDescription = null, modifier = Modifier.size(18.dp)) }
@@ -205,7 +217,7 @@ fun AdminDashboardScreen(
                     textPrimary = textPrimary,
                     textSecondary = textSecondary
                 )
-                1 -> ContentManagementSection(
+                1 -> UserLoginsSection(
                     state = state,
                     viewModel = viewModel,
                     isDark = isDark,
@@ -214,7 +226,16 @@ fun AdminDashboardScreen(
                     textPrimary = textPrimary,
                     textSecondary = textSecondary
                 )
-                2 -> CohortAnalyticsSection(
+                2 -> ContentManagementSection(
+                    state = state,
+                    viewModel = viewModel,
+                    isDark = isDark,
+                    cardColor = cardColor,
+                    borderColor = borderColor,
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary
+                )
+                3 -> CohortAnalyticsSection(
                     state = state,
                     isDark = isDark,
                     cardColor = cardColor,
@@ -387,7 +408,7 @@ private fun StudentRecordsSection(
 }
 
 @Composable
-private fun AdminStatCard(
+fun AdminStatCard(
     title: String,
     value: String,
     icon: String,
@@ -451,7 +472,10 @@ private fun StudentRosterCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Box(
                         modifier = Modifier
                             .size(42.dp)
@@ -470,19 +494,43 @@ private fun StudentRosterCard(
                         )
                     }
                     Spacer(Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = student.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = textPrimary
+                            color = textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = student.email,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = textSecondary
-                        )
+                        Spacer(Modifier.height(2.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isDark) Color(0xFF0F172A) else Color(0xFFEFF6FF))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Email,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp),
+                                tint = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = student.email,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = if (isDark) DarkSpectrumCyan else LightSpectrumActionPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
+                Spacer(Modifier.width(8.dp))
 
                 Surface(
                     color = if (student.standard == 12) Color(0xFF6366F1).copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f),

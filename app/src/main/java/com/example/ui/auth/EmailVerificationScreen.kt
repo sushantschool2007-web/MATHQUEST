@@ -287,6 +287,20 @@ fun EmailVerificationScreen(
                     }
                 }
 
+                // Skip & Practice Offline
+                TextButton(
+                    onClick = {
+                        viewModel.skipVerificationForOffline(onSuccess = onVerificationSuccess)
+                    },
+                    modifier = Modifier.testTag("skip_verification_offline_button")
+                ) {
+                    Text(
+                        "Skip verification & practice offline →",
+                        color = QuestAccentGold,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
+
                 // Sign out / Back to Login
                 TextButton(
                     onClick = {

@@ -1,6 +1,10 @@
 package com.example.ui.auth
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,8 +16,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -42,7 +50,8 @@ import com.example.ui.theme.*
 fun LoginScreen(
     viewModel: AuthViewModel,
     onNavigateToRegister: () -> Unit,
-    onLoginSuccess: (isEmailVerified: Boolean) -> Unit
+    onLoginSuccess: (isEmailVerified: Boolean) -> Unit,
+    onAdminLoginSuccess: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -61,7 +70,12 @@ fun LoginScreen(
     // Auto navigate on authenticated state
     LaunchedEffect(uiState.authState, uiState.isEmailVerified) {
         if (uiState.authState is AuthState.Authenticated) {
-            onLoginSuccess(uiState.isEmailVerified)
+            if (uiState.selectedPortal == AuthPortal.ADMIN &&
+                AuthViewModel.AUTHORIZED_ADMIN_EMAILS.any { it.equals(uiState.email, ignoreCase = true) }) {
+                onAdminLoginSuccess()
+            } else {
+                onLoginSuccess(uiState.isEmailVerified)
+            }
         }
     }
 
@@ -136,11 +150,110 @@ fun LoginScreen(
 
                 Spacer(Modifier.height(32.dp))
 
+                // Option B: Segmented Role Selection Toggle (Student vs Admin Portal)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = QuestNavyCard),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, QuestNavyBorder)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp)
+                    ) {
+                        // Student Portal Option
+                        val isStudentSelected = uiState.selectedPortal == AuthPortal.STUDENT
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isStudentSelected) QuestPrimaryBlue else Color.Transparent
+                                )
+                                .clickable {
+                                    viewModel.setPortal(AuthPortal.STUDENT)
+                                }
+                                .padding(vertical = 12.dp)
+                                .testTag("portal_student_tab"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.School,
+                                    contentDescription = null,
+                                    tint = if (isStudentSelected) Color.White else QuestTextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Student Portal",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = if (isStudentSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isStudentSelected) Color.White else QuestTextSecondary
+                                )
+                            }
+                        }
+
+                        // Admin Portal Option (Option B)
+                        val isAdminSelected = uiState.selectedPortal == AuthPortal.ADMIN
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .then(
+                                    if (isAdminSelected) {
+                                        Modifier.background(Brush.horizontalGradient(listOf(Color(0xFF6366F1), Color(0xFFA855F7))))
+                                    } else {
+                                        Modifier.background(Color.Transparent)
+                                    }
+                                )
+                                .clickable {
+                                    viewModel.setPortal(AuthPortal.ADMIN)
+                                }
+                                .padding(vertical = 12.dp)
+                                .testTag("portal_admin_tab"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AdminPanelSettings,
+                                    contentDescription = null,
+                                    tint = if (isAdminSelected) Color.White else QuestTextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Admin Portal",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = if (isAdminSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isAdminSelected) Color.White else QuestTextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
                 // Login Form Card
                 Card(
                     colors = CardDefaults.cardColors(containerColor = QuestNavyCard),
                     shape = RoundedCornerShape(24.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, QuestNavyBorder),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFF6366F1).copy(alpha = 0.8f) else QuestNavyBorder
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -149,23 +262,76 @@ fun LoginScreen(
                             .padding(22.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Text(
-                            text = "SIGN IN TO YOUR ACCOUNT",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = QuestTextTertiary
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (uiState.selectedPortal == AuthPortal.ADMIN) {
+                                    "ADMINISTRATOR SIGN IN"
+                                } else {
+                                    "STUDENT SIGN IN"
+                                },
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFFA5B4FC) else QuestTextTertiary
+                            )
+
+                            if (uiState.selectedPortal == AuthPortal.ADMIN) {
+                                Surface(
+                                    color = Color(0xFF6366F1).copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Security,
+                                            contentDescription = null,
+                                            tint = Color(0xFFA5B4FC),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            "Secured Mode",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            color = Color(0xFFA5B4FC),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         // Email Field
                         OutlinedTextField(
                             value = uiState.email,
                             onValueChange = { viewModel.onEmailChange(it) },
-                            label = { Text("Email Address") },
-                            placeholder = { Text("aspirant@example.com") },
+                            label = {
+                                Text(
+                                    if (uiState.selectedPortal == AuthPortal.ADMIN) {
+                                        "Administrator Email"
+                                    } else {
+                                        "Email Address"
+                                    }
+                                )
+                            },
+                            placeholder = {
+                                Text(
+                                    if (uiState.selectedPortal == AuthPortal.ADMIN) {
+                                        "sushantschool2007@gmail.com"
+                                    } else {
+                                        "aspirant@example.com"
+                                    }
+                                )
+                            },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Email,
                                     contentDescription = null,
-                                    tint = QuestPrimaryBlueLight
+                                    tint = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFFA5B4FC) else QuestPrimaryBlueLight
                                 )
                             },
                             isError = uiState.emailError != null,
@@ -183,13 +349,13 @@ fun LoginScreen(
                             ),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = QuestAccentGold,
+                                focusedBorderColor = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFF6366F1) else QuestAccentGold,
                                 unfocusedBorderColor = QuestNavyBorder,
                                 focusedTextColor = QuestTextPrimary,
                                 unfocusedTextColor = QuestTextPrimary,
-                                focusedLabelColor = QuestAccentGold,
+                                focusedLabelColor = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFFA5B4FC) else QuestAccentGold,
                                 unfocusedLabelColor = QuestTextSecondary,
-                                cursorColor = QuestAccentGold,
+                                cursorColor = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFF6366F1) else QuestAccentGold,
                                 focusedContainerColor = QuestNavySurface,
                                 unfocusedContainerColor = QuestNavySurface
                             ),
@@ -209,7 +375,7 @@ fun LoginScreen(
                                 Icon(
                                     imageVector = Icons.Default.Lock,
                                     contentDescription = null,
-                                    tint = QuestPrimaryBlueLight
+                                    tint = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFFA5B4FC) else QuestPrimaryBlueLight
                                 )
                             },
                             trailingIcon = {
@@ -230,23 +396,31 @@ fun LoginScreen(
                             },
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Password,
-                                imeAction = ImeAction.Done
+                                imeAction = if (uiState.selectedPortal == AuthPortal.ADMIN) ImeAction.Next else ImeAction.Done
                             ),
                             keyboardActions = KeyboardActions(
+                                onNext = {
+                                    if (uiState.selectedPortal == AuthPortal.ADMIN) {
+                                        focusManager.moveFocus(FocusDirection.Down)
+                                    }
+                                },
                                 onDone = {
                                     focusManager.clearFocus()
-                                    viewModel.login(onLoginSuccess)
+                                    viewModel.login(
+                                        onSuccess = onLoginSuccess,
+                                        onAdminSuccess = onAdminLoginSuccess
+                                    )
                                 }
                             ),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = QuestAccentGold,
+                                focusedBorderColor = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFF6366F1) else QuestAccentGold,
                                 unfocusedBorderColor = QuestNavyBorder,
                                 focusedTextColor = QuestTextPrimary,
                                 unfocusedTextColor = QuestTextPrimary,
-                                focusedLabelColor = QuestAccentGold,
+                                focusedLabelColor = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFFA5B4FC) else QuestAccentGold,
                                 unfocusedLabelColor = QuestTextSecondary,
-                                cursorColor = QuestAccentGold,
+                                cursorColor = if (uiState.selectedPortal == AuthPortal.ADMIN) Color(0xFF6366F1) else QuestAccentGold,
                                 focusedContainerColor = QuestNavySurface,
                                 unfocusedContainerColor = QuestNavySurface
                             ),
@@ -255,6 +429,76 @@ fun LoginScreen(
                                 .fillMaxWidth()
                                 .testTag("password_input")
                         )
+
+                        // Option B: Admin Security Passkey (Only shown in Admin mode)
+                        AnimatedVisibility(
+                            visible = uiState.selectedPortal == AuthPortal.ADMIN,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                OutlinedTextField(
+                                    value = uiState.adminPasskey,
+                                    onValueChange = { viewModel.onAdminPasskeyChange(it) },
+                                    label = { Text("Admin Security Key / Passcode") },
+                                    placeholder = { Text("Enter Master Passkey") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Key,
+                                            contentDescription = null,
+                                            tint = Color(0xFFA5B4FC)
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        IconButton(onClick = { viewModel.toggleAdminPasskeyVisibility() }) {
+                                            Icon(
+                                                imageVector = if (uiState.isAdminPasskeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = if (uiState.isAdminPasskeyVisible) "Hide passkey" else "Show passkey",
+                                                tint = QuestTextSecondary
+                                            )
+                                        }
+                                    },
+                                    visualTransformation = if (uiState.isAdminPasskeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    isError = uiState.adminPasskeyError != null,
+                                    supportingText = {
+                                        if (uiState.adminPasskeyError != null) {
+                                            Text(uiState.adminPasskeyError!!, color = QuestErrorRed, style = MaterialTheme.typography.bodySmall)
+                                        } else {
+                                            Text("Hardware/Faculty Passcode for administrator authentication", color = Color(0xFFA5B4FC), style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    },
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Password,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = {
+                                            focusManager.clearFocus()
+                                            viewModel.login(
+                                                onSuccess = onLoginSuccess,
+                                                onAdminSuccess = onAdminLoginSuccess
+                                            )
+                                        }
+                                    ),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFF6366F1),
+                                        unfocusedBorderColor = Color(0xFF6366F1).copy(alpha = 0.5f),
+                                        focusedTextColor = QuestTextPrimary,
+                                        unfocusedTextColor = QuestTextPrimary,
+                                        focusedLabelColor = Color(0xFFA5B4FC),
+                                        unfocusedLabelColor = QuestTextSecondary,
+                                        cursorColor = Color(0xFF6366F1),
+                                        focusedContainerColor = Color(0xFF1E1B4B).copy(alpha = 0.5f),
+                                        unfocusedContainerColor = Color(0xFF1E1B4B).copy(alpha = 0.3f)
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("admin_passkey_input")
+                                )
+                            }
+                        }
 
                         // Forgot Password Link
                         Row(
@@ -292,18 +536,22 @@ fun LoginScreen(
                             }
                         }
 
-                        // Submit Button
+                        // Submit Button (Student vs Admin dynamic styling)
+                        val isAdminMode = uiState.selectedPortal == AuthPortal.ADMIN
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                viewModel.login(onSuccess = { isVerified -> onLoginSuccess(isVerified) })
+                                viewModel.login(
+                                    onSuccess = onLoginSuccess,
+                                    onAdminSuccess = onAdminLoginSuccess
+                                )
                             },
                             enabled = uiState.authState !is AuthState.Loading,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = QuestAccentGold,
-                                contentColor = QuestNavyDark,
-                                disabledContainerColor = QuestAccentGold.copy(alpha = 0.5f),
-                                disabledContentColor = QuestNavyDark.copy(alpha = 0.7f)
+                                containerColor = if (isAdminMode) Color(0xFF6366F1) else QuestAccentGold,
+                                contentColor = if (isAdminMode) Color.White else QuestNavyDark,
+                                disabledContainerColor = (if (isAdminMode) Color(0xFF6366F1) else QuestAccentGold).copy(alpha = 0.5f),
+                                disabledContentColor = (if (isAdminMode) Color.White else QuestNavyDark).copy(alpha = 0.7f)
                             ),
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
@@ -314,62 +562,83 @@ fun LoginScreen(
                             if (uiState.authState is AuthState.Loading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(22.dp),
-                                    color = QuestNavyDark,
+                                    color = if (isAdminMode) Color.White else QuestNavyDark,
                                     strokeWidth = 2.5.dp
                                 )
                                 Spacer(Modifier.width(10.dp))
-                                Text("Logging in...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            } else {
                                 Text(
-                                    "Log In",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                    if (isAdminMode) "Verifying Credentials..." else "Logging in...",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
                                 )
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isAdminMode) {
+                                        Icon(
+                                            imageVector = Icons.Default.AdminPanelSettings,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "Log In to Admin Dashboard",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                        )
+                                    } else {
+                                        Text(
+                                            "Log In to Student Quest",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                        )
+                                    }
+                                }
                             }
                         }
 
-                        // Guest / Quick Start Option
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = QuestNavyBorder
-                            )
-                            Text(
-                                "OR",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = QuestTextTertiary
-                            )
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = QuestNavyBorder
-                            )
-                        }
+                        // Guest / Quick Start Option (Only for students)
+                        if (!isAdminMode) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = QuestNavyBorder
+                                )
+                                Text(
+                                    "OR",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = QuestTextTertiary
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = QuestNavyBorder
+                                )
+                            }
 
-                        OutlinedButton(
-                            onClick = {
-                                focusManager.clearFocus()
-                                viewModel.loginAsGuest(onSuccess = { onLoginSuccess(true) })
-                            },
-                            enabled = uiState.authState !is AuthState.Loading,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = QuestTextPrimary
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, QuestNavyBorder),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("guest_login_button")
-                        ) {
-                            Text(
-                                "Continue as Guest / Quick Start",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-                            )
+                            OutlinedButton(
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    viewModel.loginAsGuest(onSuccess = { onLoginSuccess(true) })
+                                },
+                                enabled = uiState.authState !is AuthState.Loading,
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = QuestTextPrimary
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, QuestNavyBorder),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("guest_login_button")
+                            ) {
+                                Text(
+                                    "Continue as Guest / Quick Start",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                )
+                            }
                         }
                     }
                 }

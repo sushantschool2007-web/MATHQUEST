@@ -171,3 +171,16 @@ data class StudentEntity(
     val notes: String = ""
 )
 
+@Entity(tableName = "user_login_history")
+data class UserLoginHistoryEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val uid: String,
+    val email: String,
+    val displayName: String,
+    val loginTimestamp: Long = System.currentTimeMillis(),
+    val loginMethod: String = "Email & Password", // "Email & Password", "Guest Session", "New Account Registration", "Session Restored"
+    val deviceModel: String = "Android Mobile Device",
+    val status: String = "Authenticated"
+)
+

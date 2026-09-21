@@ -17,9 +17,10 @@ import com.example.data.local.entity.*
         MockTestResultEntity::class,
         DailyChallengeEntity::class,
         UserProfileEntity::class,
-        StudentEntity::class
+        StudentEntity::class,
+        UserLoginHistoryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,6 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dailyChallengeDao(): DailyChallengeDao
     abstract fun userProfileDao(): UserProfileDao
     abstract fun studentDao(): StudentDao
+    abstract fun userLoginHistoryDao(): UserLoginHistoryDao
 
     companion object {
         @Volatile

@@ -32,12 +32,32 @@ data class AuthUiState(
     val passwordError: String? = null,
     val confirmPasswordError: String? = null,
     val resetEmailSentMessage: String? = null,
-    val snackbarMessage: String? = null
+    val snackbarMessage: String? = null,
+    // Option B: Admin vs Student Portal Toggle & Security Passkey State
+    val selectedPortal: AuthPortal = AuthPortal.STUDENT,
+    val adminPasskey: String = "",
+    val adminPasskeyError: String? = null,
+    val isAdminPasskeyVisible: Boolean = false
 )
+
+enum class AuthPortal {
+    STUDENT,
+    ADMIN
+}
 
 class AuthViewModel(
     private val authRepository: AuthRepository
 ) : ViewModel() {
+
+    companion object {
+        // Option B Security: Verified Administrator Whitelist & Admin Master Passkey
+        val AUTHORIZED_ADMIN_EMAILS = setOf(
+            "sushantschool2007@gmail.com",
+            "admin@cetquest.edu",
+            "faculty@cetquest.edu"
+        )
+        const val ADMIN_MASTER_PASSKEY = "CETADMIN2025"
+    }
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
@@ -92,18 +112,43 @@ class AuthViewModel(
         _uiState.update { it.copy(isConfirmPasswordVisible = !it.isConfirmPasswordVisible) }
     }
 
+    fun setPortal(portal: AuthPortal) {
+        _uiState.update {
+            it.copy(
+                selectedPortal = portal,
+                emailError = null,
+                passwordError = null,
+                adminPasskeyError = null,
+                snackbarMessage = null
+            )
+        }
+    }
+
+    fun onAdminPasskeyChange(passkey: String) {
+        _uiState.update { it.copy(adminPasskey = passkey, adminPasskeyError = null) }
+    }
+
+    fun toggleAdminPasskeyVisibility() {
+        _uiState.update { it.copy(isAdminPasskeyVisible = !it.isAdminPasskeyVisible) }
+    }
+
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null, resetEmailSentMessage = null) }
     }
 
-    fun login(onSuccess: (isVerified: Boolean) -> Unit = {}) {
+    fun login(
+        onSuccess: (isVerified: Boolean) -> Unit = {},
+        onAdminSuccess: () -> Unit = {}
+    ) {
         val state = _uiState.value
         val email = state.email.trim()
         val password = state.password
+        val isLoggingAsAdmin = state.selectedPortal == AuthPortal.ADMIN
 
         var hasError = false
         var emailErr: String? = null
         var passErr: String? = null
+        var passkeyErr: String? = null
 
         if (email.isBlank()) {
             emailErr = "Email address is required"
@@ -121,12 +166,30 @@ class AuthViewModel(
             hasError = true
         }
 
+        // Option B Strict Admin Security Validations
+        if (isLoggingAsAdmin) {
+            val isAuthorizedAdmin = AUTHORIZED_ADMIN_EMAILS.any { it.equals(email, ignoreCase = true) }
+            if (!isAuthorizedAdmin) {
+                emailErr = "Unauthorized. This email does not have administrator privileges."
+                hasError = true
+            }
+
+            if (state.adminPasskey.isBlank()) {
+                passkeyErr = "Admin Security Passkey is required"
+                hasError = true
+            } else if (state.adminPasskey != ADMIN_MASTER_PASSKEY) {
+                passkeyErr = "Invalid Admin Passkey. Access denied."
+                hasError = true
+            }
+        }
+
         if (hasError) {
             _uiState.update {
                 it.copy(
                     emailError = emailErr,
                     passwordError = passErr,
-                    snackbarMessage = emailErr ?: passErr
+                    adminPasskeyError = passkeyErr,
+                    snackbarMessage = emailErr ?: passkeyErr ?: passErr
                 )
             }
             return
@@ -146,11 +209,22 @@ class AuthViewModel(
                         ),
                         email = user.email,
                         password = "",
+                        adminPasskey = "",
                         isEmailVerified = verified,
-                        snackbarMessage = if (verified) "Welcome back, ${user.displayName}!" else "Please verify your email address to proceed."
+                        snackbarMessage = if (isLoggingAsAdmin) {
+                            "Administrator identity verified! Welcome, ${user.displayName}."
+                        } else if (verified) {
+                            "Welcome back, ${user.displayName}!"
+                        } else {
+                            "Please verify your email address to proceed."
+                        }
                     )
                 }
-                onSuccess(verified)
+                if (isLoggingAsAdmin) {
+                    onAdminSuccess()
+                } else {
+                    onSuccess(verified)
+                }
             }.onFailure { error ->
                 val errorMsg = error.localizedMessage ?: "Login failed. Please try again."
                 _uiState.update {
@@ -358,6 +432,16 @@ class AuthViewModel(
                 }
             }
         }
+    }
+
+    fun skipVerificationForOffline(onSuccess: () -> Unit) {
+        _uiState.update {
+            it.copy(
+                isEmailVerified = true,
+                snackbarMessage = "Welcome! Offline practice mode active."
+            )
+        }
+        onSuccess()
     }
 
     fun signOut(onSignedOut: () -> Unit = {}) {

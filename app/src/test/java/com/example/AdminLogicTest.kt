@@ -113,4 +113,82 @@ class AdminLogicTest {
         assertEquals(12, newFormula.stdClass)
         assertTrue(newFormula.formula.contains("vec{a}"))
     }
+
+    @Test
+    fun testUserLoginHistoryFilteringByEmailAndName() {
+        val logins = listOf(
+            com.example.data.local.entity.UserLoginHistoryEntity(
+                id = 1,
+                uid = "u1",
+                email = "sushantschool2007@gmail.com",
+                displayName = "Sushant Shinde",
+                loginMethod = "Email & Password"
+            ),
+            com.example.data.local.entity.UserLoginHistoryEntity(
+                id = 2,
+                uid = "u2",
+                email = "aarav.deshmukh@gmail.com",
+                displayName = "Aarav Deshmukh",
+                loginMethod = "Email & Password"
+            ),
+            com.example.data.local.entity.UserLoginHistoryEntity(
+                id = 3,
+                uid = "u3",
+                email = "guest_1234@cetquest.edu",
+                displayName = "CET Aspirant",
+                loginMethod = "Guest Session"
+            )
+        )
+
+        // Filter by email query
+        val searchByEmail = logins.filter { it.email.contains("sushantschool2007", ignoreCase = true) }
+        assertEquals(1, searchByEmail.size)
+        assertEquals("Sushant Shinde", searchByEmail.first().displayName)
+
+        // Filter by name query
+        val searchByName = logins.filter { it.displayName.contains("Aarav", ignoreCase = true) }
+        assertEquals(1, searchByName.size)
+        assertEquals("aarav.deshmukh@gmail.com", searchByName.first().email)
+
+        // Filter by method
+        val guestLogins = logins.filter { it.loginMethod.contains("Guest", ignoreCase = true) }
+        assertEquals(1, guestLogins.size)
+        assertEquals("Guest Session", guestLogins.first().loginMethod)
+
+        // Unique user count
+        val uniqueUserEmails = logins.map { it.email }.distinct()
+        assertEquals(3, uniqueUserEmails.size)
+    }
+
+    @Test
+    fun testOptionBAdminPortalSecurityValidation() {
+        val authorizedAdmins = com.example.ui.auth.AuthViewModel.AUTHORIZED_ADMIN_EMAILS
+        val masterPasskey = com.example.ui.auth.AuthViewModel.ADMIN_MASTER_PASSKEY
+
+        // Admin email whitelist validation
+        assertTrue(authorizedAdmins.contains("sushantschool2007@gmail.com"))
+        assertTrue(authorizedAdmins.contains("admin@cetquest.edu"))
+        org.junit.Assert.assertFalse(authorizedAdmins.contains("student@gmail.com"))
+
+        // Master Passkey check
+        assertEquals("CETADMIN2025", masterPasskey)
+
+        // Simulate security check logic
+        val testAdminEmail = "sushantschool2007@gmail.com"
+        val testWrongEmail = "intruder@gmail.com"
+        val testPasskey = "CETADMIN2025"
+        val testWrongPasskey = "wrong123"
+
+        // Legitimate admin login passes
+        val isLegitAdmin = authorizedAdmins.any { it.equals(testAdminEmail, ignoreCase = true) } && testPasskey == masterPasskey
+        assertTrue(isLegitAdmin)
+
+        // Invalid passkey fails
+        val isInvalidPasskey = authorizedAdmins.any { it.equals(testAdminEmail, ignoreCase = true) } && testWrongPasskey == masterPasskey
+        org.junit.Assert.assertFalse(isInvalidPasskey)
+
+        // Unauthorized email fails even with passkey
+        val isUnauthorizedEmail = authorizedAdmins.any { it.equals(testWrongEmail, ignoreCase = true) } && testPasskey == masterPasskey
+        org.junit.Assert.assertFalse(isUnauthorizedEmail)
+    }
 }

@@ -5,19 +5,27 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.entity.FormulaEntity
 import com.example.data.local.entity.QuestionEntity
 import com.example.data.local.entity.StudentEntity
+import com.example.data.local.entity.UserLoginHistoryEntity
+import com.example.data.local.entity.UserProfileEntity
 import com.example.data.model.MathematicsRepositoryCatalog
 import com.example.data.repository.MathRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 data class AdminDashboardUiState(
-    val activeTab: Int = 0, // 0: Students, 1: Add Content, 2: Cohort Analytics
+    val activeTab: Int = 0, // 0: Students, 1: User Logins, 2: Add Content, 3: Cohort Analytics
     val cmsSubTab: Int = 0, // 0: Add Question, 1: Add Formula, 2: Content Inventory
     val students: List<StudentEntity> = emptyList(),
     val filteredStudents: List<StudentEntity> = emptyList(),
     val searchQuery: String = "",
     val classFilter: String = "All",
     val selectedStudent: StudentEntity? = null,
+    val loginHistory: List<UserLoginHistoryEntity> = emptyList(),
+    val filteredLoginHistory: List<UserLoginHistoryEntity> = emptyList(),
+    val loginSearchQuery: String = "",
+    val loginMethodFilter: String = "All", // "All", "Email & Password", "Registration", "Guest"
+    val userProfiles: List<UserProfileEntity> = emptyList(),
+    val selectedLogin: UserLoginHistoryEntity? = null,
     val totalQuestionsCount: Int = 0,
     val totalFormulasCount: Int = 0,
     val recentQuestions: List<QuestionEntity> = emptyList(),
@@ -75,6 +83,7 @@ class AdminDashboardViewModel(
     init {
         viewModelScope.launch {
             repository.seedInitialStudentsIfEmpty()
+            repository.seedInitialLoginsIfEmpty()
         }
 
         // Sync current active student with userPreferences
@@ -93,6 +102,24 @@ class AdminDashboardViewModel(
                         filteredStudents = filterStudents(list, current.searchQuery, current.classFilter)
                     )
                 }
+            }
+        }
+
+        // Collect user login events and profiles
+        viewModelScope.launch {
+            repository.allLoginHistory.collectLatest { list ->
+                _uiState.update { current ->
+                    current.copy(
+                        loginHistory = list,
+                        filteredLoginHistory = filterLogins(list, current.loginSearchQuery, current.loginMethodFilter)
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            repository.allUserProfiles.collectLatest { profiles ->
+                _uiState.update { it.copy(userProfiles = profiles) }
             }
         }
 
@@ -167,6 +194,73 @@ class AdminDashboardViewModel(
             }
 
             matchesQuery && matchesFilter
+        }
+    }
+
+    fun setLoginSearchQuery(query: String) {
+        _uiState.update { current ->
+            current.copy(
+                loginSearchQuery = query,
+                filteredLoginHistory = filterLogins(current.loginHistory, query, current.loginMethodFilter)
+            )
+        }
+    }
+
+    fun setLoginMethodFilter(filter: String) {
+        _uiState.update { current ->
+            current.copy(
+                loginMethodFilter = filter,
+                filteredLoginHistory = filterLogins(current.loginHistory, current.loginSearchQuery, filter)
+            )
+        }
+    }
+
+    fun selectLogin(login: UserLoginHistoryEntity?) {
+        _uiState.update { it.copy(selectedLogin = login) }
+    }
+
+    private fun filterLogins(list: List<UserLoginHistoryEntity>, query: String, filter: String): List<UserLoginHistoryEntity> {
+        return list.filter { item ->
+            val matchesQuery = query.isBlank() ||
+                    item.email.contains(query, ignoreCase = true) ||
+                    item.displayName.contains(query, ignoreCase = true) ||
+                    item.deviceModel.contains(query, ignoreCase = true) ||
+                    item.loginMethod.contains(query, ignoreCase = true)
+
+            val matchesFilter = when (filter) {
+                "Email & Password" -> item.loginMethod.contains("Email", ignoreCase = true)
+                "Registration" -> item.loginMethod.contains("Registration", ignoreCase = true)
+                "Guest" -> item.loginMethod.contains("Guest", ignoreCase = true)
+                else -> true
+            }
+
+            matchesQuery && matchesFilter
+        }
+    }
+
+    fun recordSimulatedLogin(name: String, email: String, method: String = "Email & Password") {
+        viewModelScope.launch {
+            repository.recordLogin(
+                uid = "usr_${System.currentTimeMillis() % 100000}",
+                email = email.trim(),
+                displayName = name.trim(),
+                loginMethod = method
+            )
+            _uiState.update { it.copy(snackbarMessage = "Logged in: $name ($email)") }
+        }
+    }
+
+    fun deleteLogin(id: Long) {
+        viewModelScope.launch {
+            repository.deleteLoginRecord(id)
+            _uiState.update { it.copy(snackbarMessage = "Login record removed") }
+        }
+    }
+
+    fun clearAllLogins() {
+        viewModelScope.launch {
+            repository.clearLoginHistory()
+            _uiState.update { it.copy(snackbarMessage = "Login history cleared") }
         }
     }
 

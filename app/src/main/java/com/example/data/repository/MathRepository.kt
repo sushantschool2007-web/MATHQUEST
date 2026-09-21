@@ -27,10 +27,13 @@ class MathRepository(
     private val dailyChallengeDao = database.dailyChallengeDao()
     private val userProfileDao = database.userProfileDao()
     private val studentDao = database.studentDao()
+    private val userLoginHistoryDao = database.userLoginHistoryDao()
 
     val userPreferencesFlow: Flow<UserPreferences> = dataStoreManager.userPreferencesFlow
     val latestUserProfile: Flow<UserProfileEntity?> = userProfileDao.getLatestUserProfile()
+    val allUserProfiles: Flow<List<UserProfileEntity>> = userProfileDao.getAllUserProfiles()
     val allStudents: Flow<List<StudentEntity>> = studentDao.getAllStudents()
+    val allLoginHistory: Flow<List<UserLoginHistoryEntity>> = userLoginHistoryDao.getAllLoginHistory()
     val allChapterProgress: Flow<List<ChapterProgressEntity>> = chapterDao.getAllChapterProgress()
     val allMistakes: Flow<List<MistakeEntity>> = mistakeDao.getAllMistakes()
     val unresolvedMistakes: Flow<List<MistakeEntity>> = mistakeDao.getUnresolvedMistakes()
@@ -522,6 +525,153 @@ class MathRepository(
             notes = existing?.notes ?: "Active registered student."
         )
         studentDao.insertStudent(student)
+    }
+
+    suspend fun recordLogin(
+        uid: String,
+        email: String,
+        displayName: String,
+        loginMethod: String = "Email & Password"
+    ) {
+        val cleanEmail = email.trim().ifBlank { "aspirant@cetquest.edu" }
+        val cleanName = displayName.trim().ifBlank {
+            cleanEmail.substringBefore("@").replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+        val now = System.currentTimeMillis()
+
+        // 1. Record entry in user_login_history
+        userLoginHistoryDao.insertLogin(
+            UserLoginHistoryEntity(
+                uid = uid,
+                email = cleanEmail,
+                displayName = cleanName,
+                loginTimestamp = now,
+                loginMethod = loginMethod,
+                deviceModel = "Android Mobile Device",
+                status = "Authenticated"
+            )
+        )
+
+        // 2. Persist in user_profiles
+        userProfileDao.insertOrUpdateProfile(
+            UserProfileEntity(
+                uid = uid,
+                email = cleanEmail,
+                displayName = cleanName,
+                lastLoginAt = now
+            )
+        )
+
+        // 3. Upsert student entity so student cohort reflects this active user
+        val existingStudent = studentDao.getStudentById(uid)
+        val student = StudentEntity(
+            studentId = uid,
+            name = cleanName,
+            email = cleanEmail,
+            standard = existingStudent?.standard ?: 12,
+            targetExam = existingStudent?.targetExam ?: "MHT-CET 2026",
+            enrollmentDate = existingStudent?.enrollmentDate ?: now,
+            lastActiveTimestamp = now,
+            xp = existingStudent?.xp ?: 150,
+            levelNumber = existingStudent?.levelNumber ?: 1,
+            levelTitle = existingStudent?.levelTitle ?: "Freshman Aspirant",
+            streakDays = existingStudent?.streakDays ?: 1,
+            totalSolved = existingStudent?.totalSolved ?: 0,
+            totalCorrect = existingStudent?.totalCorrect ?: 0,
+            accuracy = existingStudent?.accuracy ?: 0f,
+            studyTimeMinutes = existingStudent?.studyTimeMinutes ?: 15,
+            mockTestsTaken = existingStudent?.mockTestsTaken ?: 0,
+            mockTestBestScore = existingStudent?.mockTestBestScore ?: 0,
+            mockTestAvgScore = existingStudent?.mockTestAvgScore ?: 0,
+            chaptersMastered = existingStudent?.chaptersMastered ?: 0,
+            totalMistakes = existingStudent?.totalMistakes ?: 0,
+            weakTopics = existingStudent?.weakTopics ?: "Calculus, Conics",
+            strongTopics = existingStudent?.strongTopics ?: "Matrices, Logic",
+            notes = "Active logged-in student. Logged in via $loginMethod"
+        )
+        studentDao.insertStudent(student)
+
+        // 4. Update dataStore session
+        dataStoreManager.saveAuthSession(uid, cleanEmail, cleanName)
+    }
+
+    suspend fun clearLoginHistory() {
+        userLoginHistoryDao.clearHistory()
+    }
+
+    suspend fun deleteLoginRecord(id: Long) {
+        userLoginHistoryDao.deleteLogin(id)
+    }
+
+    suspend fun seedInitialLoginsIfEmpty() {
+        if (userLoginHistoryDao.getLoginCount() > 0) return
+        val now = System.currentTimeMillis()
+        val sampleLogins = listOf(
+            UserLoginHistoryEntity(
+                uid = "usr_sushant_001",
+                email = "sushantschool2007@gmail.com",
+                displayName = "Sushant Shinde",
+                loginTimestamp = now - (3 * 60 * 1000L), // 3 mins ago
+                loginMethod = "Email & Password",
+                deviceModel = "Pixel 8 Pro",
+                status = "Active"
+            ),
+            UserLoginHistoryEntity(
+                uid = "usr_aarav_002",
+                email = "aarav.deshmukh@gmail.com",
+                displayName = "Aarav Deshmukh",
+                loginTimestamp = now - (22 * 60 * 1000L), // 22 mins ago
+                loginMethod = "Email & Password",
+                deviceModel = "Samsung Galaxy S23",
+                status = "Active"
+            ),
+            UserLoginHistoryEntity(
+                uid = "usr_rohan_003",
+                email = "rohan.patil@gmail.com",
+                displayName = "Rohan Patil",
+                loginTimestamp = now - (55 * 60 * 1000L), // 55 mins ago
+                loginMethod = "Google Sign-in",
+                deviceModel = "OnePlus 11",
+                status = "Active"
+            ),
+            UserLoginHistoryEntity(
+                uid = "usr_sanika_004",
+                email = "sanika.kulkarni@gmail.com",
+                displayName = "Sanika Kulkarni",
+                loginTimestamp = now - (2 * 3600 * 1000L), // 2 hours ago
+                loginMethod = "Email & Password",
+                deviceModel = "Xiaomi 13T",
+                status = "Active"
+            ),
+            UserLoginHistoryEntity(
+                uid = "usr_tanvi_005",
+                email = "tanvi.shinde@gmail.com",
+                displayName = "Tanvi Shinde",
+                loginTimestamp = now - (5 * 3600 * 1000L), // 5 hours ago
+                loginMethod = "New Account Registration",
+                deviceModel = "Nothing Phone 2",
+                status = "Active"
+            ),
+            UserLoginHistoryEntity(
+                uid = "usr_guest_006",
+                email = "guest_8921@cetquest.edu",
+                displayName = "CET Aspirant (Guest)",
+                loginTimestamp = now - (8 * 3600 * 1000L), // 8 hours ago
+                loginMethod = "Guest Session",
+                deviceModel = "Android Tablet",
+                status = "Guest Session"
+            ),
+            UserLoginHistoryEntity(
+                uid = "usr_omkar_007",
+                email = "omkar.joshi@gmail.com",
+                displayName = "Omkar Joshi",
+                loginTimestamp = now - (24 * 3600 * 1000L), // Yesterday
+                loginMethod = "Email & Password",
+                deviceModel = "Motorola Edge 40",
+                status = "Logged Out"
+            )
+        )
+        userLoginHistoryDao.insertLogins(sampleLogins)
     }
 }
 
